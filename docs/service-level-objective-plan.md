@@ -8,12 +8,12 @@ Define Service Level Indicators (SLIs) and Service Level Objectives (SLOs) deriv
 
 | Config Section | Key | SLO Semantics |
 |----------------|-----|---------------|
-| `request` | `timeout` | Max request duration; handler returns 503 if exceeded |
-| `weather_api` | `timeout` | Max upstream call duration; retries use same limit |
-| `reliability` | `rate_limit_rps`, `rate_limit_burst` | Capacity; requests above limit get 429 |
-| `lifecycle` | `overload_window`, `overload_threshold_pct` | Overload threshold: requests in window > rps × window × (pct/100) → 503 on /health |
-| `lifecycle` | `degraded_window`, `degraded_error_pct` | Error budget: error_rate ≥ pct in window → degraded (503 on /health) |
-| `lifecycle` | `idle_threshold_req_per_min`, `idle_window`, `minimum_lifespan` | Idle signal: requests/min < threshold for window after min lifespan |
+| `request` | `timeout` | Max request duration from a user for **GET /weather/{location}** endoint; handler returns 503 if exceeded |
+| `weather_api` | `timeout` | Max upstream call duration to external API; retries use same limit |
+| `reliability` | `rate_limit_rps`, `rate_limit_burst` | Capacity; requests above limit return 429 |
+| `lifecycle` | `overload_window`, `overload_threshold_pct` | Overload threshold: requests in window > rps × window × (pct/100) → 503 with status json object on /health |
+| `lifecycle` | `degraded_window`, `degraded_error_pct` | Error budget: error_count_total / total_requests ≥ pct inside degraded_window → degraded (503 on /health) |
+| `lifecycle` | `idle_threshold_req_per_min`, `idle_window`, `minimum_lifespan` | Idle signal: requests/min < threshold for window after minimum_lifespan |
 | `cache` | `ttl` | Cache entry freshness; stale entries evicted |
 | `reliability` | `retry_max_attempts` | Resilience; transient errors retried up to N times |
 | `shutdown` | `timeout` | Grace period for in-flight requests before exit |

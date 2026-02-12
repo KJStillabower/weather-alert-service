@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,8 +14,8 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/degraded"
 	"github.com/kjstillabower/weather-alert-service/internal/idle"
 	"github.com/kjstillabower/weather-alert-service/internal/lifecycle"
-	"github.com/kjstillabower/weather-alert-service/internal/models"
 	"github.com/kjstillabower/weather-alert-service/internal/overload"
+	"github.com/kjstillabower/weather-alert-service/internal/models"
 	"github.com/kjstillabower/weather-alert-service/internal/service"
 	"go.uber.org/zap"
 )
@@ -510,5 +511,320 @@ func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
 
 	if health["status"] != "healthy" {
 		t.Errorf("Health status = %q, want healthy (error rate below threshold)", health["status"])
+	}
+}
+
+func TestHandler_GetTestStatus(t *testing.T) {
+	overload.Reset()
+	degraded.Reset()
+
+	healthConfig := &HealthConfig{
+		OverloadWindow:        60 * time.Second,
+		OverloadThresholdPct:  80,
+		RateLimitRPS:         5,
+		DegradedWindow:       60 * time.Second,
+		DegradedErrorPct:     5,
+	}
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler.GetTestStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("GetTestStatus() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if _, ok := resp["total_requests_in_window"]; !ok {
+		t.Error("Response missing total_requests_in_window")
+	}
+	if _, ok := resp["denied_requests_in_window"]; !ok {
+		t.Error("Response missing denied_requests_in_window")
+	}
+	if _, ok := resp["errors_in_window"]; !ok {
+		t.Error("Response missing errors_in_window")
+	}
+	if _, ok := resp["window_length"]; !ok {
+		t.Error("Response missing window_length")
+	}
+	if _, ok := resp["auto_clear"]; !ok {
+		t.Error("Response missing auto_clear")
+	}
+}
+
+func TestHandler_PostTestReset(t *testing.T) {
+	degraded.Reset()
+	degraded.RecordSuccess()
+	degraded.RecordError()
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/reset", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "correlation_id", "test-id"))
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestReset() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp["action"] != "reset" {
+		t.Errorf("action = %q, want reset", resp["action"])
+	}
+	if !resp["ok"].(bool) {
+		t.Error("ok = false, want true")
+	}
+
+	if overload.RequestCount(1*time.Minute) != 0 {
+		t.Error("Reset: overload state not cleared")
+	}
+}
+
+func TestHandler_PostTestLoad(t *testing.T) {
+	overload.Reset()
+	degraded.Reset()
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	body := `{"count": 15}`
+	req := httptest.NewRequest("POST", "/test/load", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestLoad() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp["action"] != "load" {
+		t.Errorf("action = %q, want load", resp["action"])
+	}
+	if got := int(resp["accepted"].(float64)); got != 15 {
+		t.Errorf("accepted = %d, want 15", got)
+	}
+}
+
+func TestHandler_PostTestError(t *testing.T) {
+	degraded.Reset()
+	degraded.RecordSuccess()
+	degraded.RecordSuccess()
+	degraded.RecordSuccess()
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	body := `{"count": 2}`
+	req := httptest.NewRequest("POST", "/test/error", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestError() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp["action"] != "error" {
+		t.Errorf("action = %q, want error", resp["action"])
+	}
+	if got := int(resp["error_rate_pct"].(float64)); got != 40 {
+		t.Errorf("error_rate_pct = %d, want 40 (2 errors / 5 total)", got)
+	}
+}
+
+func TestHandler_PostTestShutdown(t *testing.T) {
+	lifecycle.SetShuttingDown(false)
+	defer lifecycle.SetShuttingDown(false)
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/shutdown", nil)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestShutdown() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["action"] != "shutdown" {
+		t.Errorf("action = %q, want shutdown", resp["action"])
+	}
+	if !lifecycle.IsShuttingDown() {
+		t.Error("Shutting-down flag not set")
+	}
+}
+
+func TestHandler_PostTestPreventClear(t *testing.T) {
+	degraded.ClearRecoveryOverrides()
+	defer degraded.ClearRecoveryOverrides()
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/prevent_clear", nil)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestPreventClear() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["action"] != "prevent_clear" {
+		t.Errorf("action = %q, want prevent_clear", resp["action"])
+	}
+}
+
+func TestHandler_PostTestFailClear(t *testing.T) {
+	degraded.ClearRecoveryOverrides()
+	defer degraded.ClearRecoveryOverrides()
+	lifecycle.SetShuttingDown(false)
+	defer lifecycle.SetShuttingDown(false)
+
+	healthConfig := &HealthConfig{
+		DegradedRetryInitial: 1 * time.Minute,
+		DegradedRetryMax:    13 * time.Minute,
+	}
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/fail_clear", nil)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestFailClear() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["action"] != "fail_clear" {
+		t.Errorf("action = %q, want fail_clear", resp["action"])
+	}
+	if _, ok := resp["next_recovery"]; !ok {
+		t.Error("Response missing next_recovery")
+	}
+}
+
+func TestHandler_PostTestClear(t *testing.T) {
+	degraded.Reset()
+	degraded.SetRecoveryDisabled(true)
+
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/clear", nil)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("PostTestClear() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["action"] != "clear" {
+		t.Errorf("action = %q, want clear", resp["action"])
+	}
+}
+
+func TestHandler_PostTestAction_Unknown(t *testing.T) {
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	logger, _ := zap.NewDevelopment()
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("POST", "/test/badaction", nil)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/test/{action}", handler.PostTestAction)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("PostTestAction(unknown) status = %d, want 404", w.Code)
 	}
 }
