@@ -1,0 +1,4 @@
+# Memcached for Weather Alert Service
+# Exposes 11211; use with cache.backend=memcached and MEMCACHED_ADDRS
+FROM memcached:1.6-alpine
+EXPOSE 11211

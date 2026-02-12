@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-memcache
+  namespace: weather
+  labels:
+    app: weather-memcache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-memcache
+  template:
+    metadata:
+      labels:
+        app: weather-memcache
+    spec:
+      containers:
+        - name: memcache
+          image: weather_memcache:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 11211
+              name: memcache
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

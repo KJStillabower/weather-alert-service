@@ -1,0 +1,154 @@
+---
+description: Go language patterns for structure, error handling, context usage, and conventions
+alwaysApply: true
+version: 1.1.0
+lastUpdated: 2026-02-11
+---
+
+# Go Patterns Rules
+
+## Core Principle
+
+Write idiomatic Go that is explicit, testable, and operationally predictable.
+
+## Project Structure
+
+Keep package boundaries simple and purpose-driven.
+
+Suggested layout:
+- `cmd/service/` application entrypoint and wiring
+- `internal/config/` configuration loading and validation
+- `internal/http/` handlers, middleware, transport DTOs
+- `internal/service/` business orchestration
+- `internal/client/` weather provider integration
+- `internal/cache/` cache implementation and interfaces
+- `internal/observability/` metrics/logging helpers
+
+### Rules
+- Prefer `internal/` packages for app internals.
+- Keep `cmd/` thin: wiring only, no business logic.
+- Avoid circular dependencies.
+
+## Interfaces and Dependency Injection
+
+Define interfaces at boundaries where behavior varies (client/cache/clock).
+
+```go
+type WeatherClient interface {
+    GetCurrentWeather(ctx context.Context, location string) (WeatherData, error)
+}
+```
+
+### Rules
+- Do not over-interface trivial concrete logic.
+- Pass dependencies via constructors.
+- Validate constructor inputs and return explicit errors.
+
+## Error Handling
+
+Use wrapped errors for context and sentinel/typed errors for control flow.
+
+```go
+if err != nil {
+    return fmt.Errorf("fetch weather: %w", err)
+}
+```
+
+### Rules
+- Never ignore returned errors without explicit rationale.
+- Use `errors.Is`/`errors.As` for classification.
+- Keep user-facing error messages stable and non-sensitive.
+- Do not panic in request path.
+
+## Context Propagation
+
+`context.Context` is mandatory for request-scoped operations.
+
+### Rules
+- First argument for IO-bound methods should be `ctx context.Context`.
+- Never use `context.Background()` in request handling flow.
+- Honor cancellation and deadlines in clients/cache calls.
+- Do not store context in structs.
+
+## Concurrency Patterns
+
+Use goroutines intentionally with bounded lifecycles.
+
+### Rules
+- Guard shared state with mutex or channel ownership.
+- Avoid unbounded goroutine creation.
+- Coordinate goroutines with `errgroup` when request-scoped fan-out is needed.
+- Ensure all spawned workers can terminate on context cancellation.
+
+## HTTP Handler Conventions
+
+Handlers should parse/validate/translate only; service layer owns decisions.
+
+### Rules
+- Validate path/query input early.
+- Use typed request/response structs.
+- Centralize HTTP error mapping.
+- Set explicit status codes and content type.
+
+## JSON and Data Modeling
+
+Use explicit transport DTOs and tags.
+
+```go
+type WeatherResponse struct {
+    Location    string  `json:"location"`
+    Temperature float64 `json:"temperature"`
+    Conditions  string  `json:"conditions"`
+    Humidity    int     `json:"humidity"`
+    WindSpeed   float64 `json:"windSpeed"`
+}
+```
+
+### Rules
+- Keep JSON key casing consistent (`camelCase` per `070-api-contract.mdc`).
+- Avoid leaking upstream provider schemas directly.
+- Validate required fields before response serialization.
+
+## Configuration
+
+All runtime behavior should be config-driven via env vars.
+
+### Rules
+- Centralize config parsing/validation in `internal/config`.
+- Fail fast on missing required config.
+- Keep defaults only for non-sensitive, safe values.
+- Document all config keys in `README.md`.
+
+## Logging and Metrics
+
+Follow `050-observability.mdc` and `090-security.mdc`.
+
+### Rules
+- Structured logs only.
+- Log decisions, boundaries, and failures; avoid routine success logs.
+- Never log secrets or credentials.
+- Emit metrics for all critical boundaries.
+
+## Testing
+
+Follow `040-testing.mdc` for comprehensive testing standards and patterns.
+
+## Naming and Style
+
+Follow standard Go style and naming.
+
+### Rules
+- Run `gofmt` on all Go files.
+- Keep functions focused and small where practical.
+- Use clear names over abbreviations.
+- Keep exported surface minimal.
+- Add comments for exported types/functions.
+
+## Avoid
+
+- Business logic in `main` or handlers
+- Hidden globals for dependencies
+- Mixed concerns in one package
+- Silent error swallowing
+- Long-lived background goroutines without shutdown control
+

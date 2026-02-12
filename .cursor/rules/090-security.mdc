@@ -1,0 +1,157 @@
+---
+description: Security best practices for credential management, secrets handling, and secure coding patterns
+alwaysApply: true
+version: 1.0.0
+lastUpdated: 2026-02-11
+---
+
+# Security Rules
+
+## Credential Management
+
+**Never hardcode credentials, API keys, or secrets in code.**
+
+```go
+// ❌ BAD
+const apiKey = "abc123xyz"
+client := weather.NewClient("abc123xyz")
+
+// ✅ GOOD
+apiKey := os.Getenv("WEATHER_API_KEY")
+if apiKey == "" {
+    return fmt.Errorf("WEATHER_API_KEY environment variable required")
+}
+client := weather.NewClient(apiKey)
+```
+
+**Configuration:**
+- Use environment variables for all secrets
+- Load from `.env` files in development (never commit `.env`)
+- Use secret management services in production
+- Document required environment variables in README.md
+
+## Git Security
+
+**Never commit secrets, API keys, or credentials to version control.**
+
+**Pre-commit checks:**
+- Scan for common secret patterns before committing
+- Verify `.gitignore` excludes sensitive files
+
+**Files to exclude in `.gitignore`:**
+```
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+secrets/
+credentials/
+config/secrets.yaml
+```
+
+**If secrets are accidentally committed:**
+- Rotate the exposed credentials immediately
+- Remove from git history using `git filter-branch` or BFG Repo-Cleaner
+- Never force-push secrets removal without team coordination
+
+## Logging Security
+
+**Never log sensitive data, API keys, or credentials.**
+
+```go
+// ❌ BAD
+log.Info("API request", "apiKey", apiKey, "location", location)
+log.Debug("Config loaded", "config", config) // if config contains secrets
+
+// ✅ GOOD
+log.Info("API request", "location", location)
+log.Debug("Config loaded", "apiKeySet", apiKey != "")
+```
+
+**Logging guidelines:**
+- Mask or omit API keys in logs
+- Use structured logging with safe fields only
+- Log that credentials are present/loaded, not their values
+- Include correlation IDs for tracing without exposing secrets
+
+## API Key Handling
+
+**Secure API key management for third-party integrations:**
+
+```go
+// ✅ GOOD - Validate and use securely
+func NewWeatherClient() (*WeatherClient, error) {
+    apiKey := os.Getenv("WEATHER_API_KEY")
+    if apiKey == "" {
+        return nil, fmt.Errorf("WEATHER_API_KEY not set")
+    }
+    if len(apiKey) < 10 {
+        return nil, fmt.Errorf("WEATHER_API_KEY appears invalid")
+    }
+    
+    // Use in HTTP headers or query params, never in URLs logged
+    return &WeatherClient{apiKey: apiKey}, nil
+}
+```
+
+**Best practices:**
+- Validate API keys are set at startup
+- Use keys in HTTP headers when possible (not query params)
+- Rotate keys periodically
+- Use different keys for dev/staging/production
+
+## Configuration Security
+
+**Externalize all configuration:**
+
+```go
+// ✅ GOOD - Configuration struct with validation
+type Config struct {
+    WeatherAPIKey string `env:"WEATHER_API_KEY,required"`
+    CacheTTL      int    `env:"CACHE_TTL" envDefault:"300"`
+    ServerPort    string `env:"SERVER_PORT" envDefault:"8080"`
+}
+
+func LoadConfig() (*Config, error) {
+    var cfg Config
+    if err := env.Parse(&cfg); err != nil {
+        return nil, fmt.Errorf("failed to load config: %w", err)
+    }
+    return &cfg, nil
+}
+```
+
+**Configuration rules:**
+- Use environment variables, not config files for secrets
+- Validate required configuration at startup
+- Provide sensible defaults for non-sensitive values
+- Document all configuration options in README.md
+
+## Code Review Checklist
+
+Before committing code, verify:
+- [ ] No hardcoded API keys or credentials
+- [ ] All secrets loaded from environment variables
+- [ ] `.gitignore` excludes `.env` and sensitive files
+- [ ] No secrets in log statements
+- [ ] Configuration is externalized and documented
+- [ ] API keys validated at startup
+
+## Risk Patterns to Avoid
+
+**High risk patterns:**
+- Hardcoding API keys in source code
+- Committing `.env` files or secrets
+- Logging API keys or credentials
+- Storing secrets in config files committed to git
+- Using secrets in URL query parameters (visible in logs)
+- Exposing secrets in error messages
+
+**Safe patterns:**
+- Environment variables for all secrets
+- Secrets loaded at runtime, not compile time
+- Masked or omitted secrets in logs
+- Configuration validation at startup
+- Separate credentials per environment

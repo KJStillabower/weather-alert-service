@@ -1,0 +1,57 @@
+# Sample Alertmanager configuration for Weather Alert Service
+# Usage: alertmanager --config.file=alertmanager.yaml
+#
+# Routes alerts to:
+# - PagerDuty: critical severity (service down, high error rate) for paging
+# - FireHydrant: all alerts for incident creation and visibility
+#
+# Replace placeholder values before use:
+# - PagerDuty: create a Prometheus integration and use the routing key
+# - FireHydrant: create an Alertmanager integration and use the webhook URL
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'firehydrant-all'
+  group_by: ['alertname', 'job', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Critical alerts -> PagerDuty (page) + FireHydrant (incident visibility)
+    - match:
+        severity: critical
+      receiver: 'critical-page'
+
+    # Warning alerts -> FireHydrant only (no page)
+    - match:
+        severity: warning
+      receiver: 'firehydrant-all'
+
+receivers:
+  - name: 'firehydrant-all'
+    webhook_configs:
+      # FireHydrant: Integrations → Alertmanager → copy webhook URL
+      - url: '<FIREHYDRANT_ALERTMANAGER_WEBHOOK_URL>'
+        send_resolved: true
+        # http_config:
+        #   authorization:
+        #     type: Bearer
+        #     credentials: '<FIREHYDRANT_API_KEY>'
+
+  # Critical: both PagerDuty (page) and FireHydrant (incident)
+  - name: 'critical-page'
+    pagerduty_configs:
+      - routing_key: '<PAGERDUTY_ROUTING_KEY>'
+        send_resolved: true
+        severity: critical
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          runbook: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+    webhook_configs:
+      - url: '<FIREHYDRANT_ALERTMANAGER_WEBHOOK_URL>'
+        send_resolved: true

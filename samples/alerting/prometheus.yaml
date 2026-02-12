@@ -1,0 +1,27 @@
+# Sample Prometheus configuration for Weather Alert Service
+# Usage: prometheus --config.file=prometheus.yaml
+#
+# Scrapes the weather service /metrics endpoint and evaluates alert rules.
+# Alerts are sent to Alertmanager (configure alertmanager.url when running Prometheus).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertmanager to send firing alerts to
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093  # Alertmanager default port
+
+# Load alert rules
+rule_files:
+  - alert-rules.yaml
+
+scrape_configs:
+  - job_name: 'weather-alert-service'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /metrics
+    scrape_interval: 15s

@@ -1,0 +1,129 @@
+# Prometheus alert rules for Weather Alert Service
+# Aligned with docs/observability-metrics-plan.md
+#
+# Metric sources:
+# - Application: httpRequestsTotal, httpRequestDurationSeconds, httpRequestsInFlight,
+#   weatherApiCallsTotal, weatherApiDurationSeconds, weatherApiRetriesTotal,
+#   cacheHitsTotal, weatherQueriesTotal, weatherQueriesByLocationTotal
+# - Runtime: process_* and go_* (Prometheus process/go collectors)
+
+groups:
+  - name: weather-service-availability
+    rules:
+      # Instance down: target not scrapeable (service crashed, network, etc.)
+      - alert: WeatherServiceDown
+        expr: up{job="weather-alert-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Weather service instance is down"
+          description: "Instance {{ $labels.instance }} of job {{ $labels.job }} has been unreachable for more than 1 minute."
+          runbook_url: "https://example.com/runbooks/weather-service-down"
+
+  - name: weather-service-request-layer
+    rules:
+      # High 5xx error rate: > 5% of requests failing with server errors
+      - alert: HighHTTPErrorRate
+        expr: |
+          sum(rate(httpRequestsTotal{job="weather-alert-service", statusCode=~"5.."}[5m]))
+          /
+          sum(rate(httpRequestsTotal{job="weather-alert-service"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "More than 5% of requests are returning 5xx ({{ $value | humanizePercentage }}) over the last 5 minutes."
+          runbook_url: "https://example.com/runbooks/high-error-rate"
+
+      # High request latency: p95 > 5s
+      - alert: HighHTTPLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(httpRequestDurationSeconds_bucket{job="weather-alert-service"}[5m])) by (le, route)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP request latency (p95 > 5s)"
+          description: "Route {{ $labels.route }} p95 latency is {{ $value | humanize }}s."
+          runbook_url: "https://example.com/runbooks/high-latency"
+
+      # Saturation: in-flight requests consistently high (tune threshold for capacity)
+      - alert: HighRequestSaturation
+        expr: httpRequestsInFlight{job="weather-alert-service"} > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request saturation"
+          description: "{{ $value }} requests in flight; may indicate capacity limits or slow downstream."
+
+  - name: weather-service-upstream
+    rules:
+      # Weather API error ratio: high failure rate from OpenWeatherMap
+      - alert: WeatherAPIHighErrorRate
+        expr: |
+          sum(rate(weatherApiCallsTotal{job="weather-alert-service", status=~"error|server_error|rate_limited"}[5m]))
+          /
+          sum(rate(weatherApiCallsTotal{job="weather-alert-service"}[5m]))
+          > 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Weather API high error rate"
+          description: "More than 20% of OpenWeatherMap calls are failing ({{ $value | humanizePercentage }})."
+          runbook_url: "https://example.com/runbooks/upstream-api-errors"
+
+      # Weather API latency: p95 > 2s (upstream degradation per observability plan)
+      - alert: WeatherAPISlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(weatherApiDurationSeconds_bucket{job="weather-alert-service", status="success"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Weather API slow (p95 > 2s)"
+          description: "OpenWeatherMap API p95 latency is {{ $value | humanize }}s."
+          runbook_url: "https://example.com/runbooks/upstream-slow"
+
+      # High retries: unstable upstream (transient failures causing retries)
+      - alert: WeatherAPIHighRetries
+        expr: |
+          rate(weatherApiRetriesTotal{job="weather-alert-service"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High weather API retry rate"
+          description: "Retry rate {{ $value | humanize }}/s indicates unstable upstream."
+
+  - name: weather-service-runtime
+    rules:
+      # Memory growth: possible leak (RSS increasing over 1h)
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="weather-alert-service"} > 500000000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High process memory (RSS > 500MB)"
+          description: "RSS is {{ $value | humanize }}B."
+          runbook_url: "https://example.com/runbooks/memory"
+
+      # Goroutine leak: sudden or sustained high count
+      - alert: HighGoroutineCount
+        expr: go_goroutines{job="weather-alert-service"} > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High goroutine count"
+          description: "{{ $value }} goroutines; possible leak."
+          runbook_url: "https://example.com/runbooks/goroutines"

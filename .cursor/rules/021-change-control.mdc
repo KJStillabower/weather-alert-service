@@ -1,0 +1,212 @@
+---
+description: Git commit standards, commit messages, trailers, and version control practices
+alwaysApply: true
+version: 1.0.3
+lastUpdated: 2026-02-11
+---
+
+# Change Control Rules
+
+## Commit Message Format
+
+**Follow conventional commit structure:**
+
+```
+<type>: <subject>
+
+<body>
+
+<trailers>
+```
+
+**Subject line (required):**
+- 50 characters or less
+- Imperative mood ("Add feature" not "Added feature")
+- No period at end
+- Capitalize first letter
+- Describe WHAT changed
+
+**Body (optional but recommended for non-trivial changes):**
+- Explain WHY the change was made
+- Provide context or rationale
+- Reference related issues or decisions
+- Separate from subject with blank line
+
+**Examples:**
+
+```bash
+# ✅ GOOD - Simple change
+git commit -m "Add correlation ID middleware"
+
+# ✅ GOOD - With body explaining why
+git commit -m "Add correlation ID middleware
+
+Implements request tracing per 050-observability.mdc.
+Enables correlation IDs for all HTTP requests to support
+debugging and log correlation across service boundaries."
+
+# ✅ GOOD - With model co-author trailer
+git commit -m "Add correlation ID middleware
+
+Implements request tracing per 050-observability.mdc.
+
+Co-authored-by: Cursor Auto <ai@cursor.com>"
+
+# ❌ BAD
+git commit -m "fix stuff"  # Too vague
+git commit -m "Added correlation ID middleware."  # Past tense, period
+git commit -m "WIP"  # Work in progress commits
+```
+
+## Commit Types
+
+**Use conventional commit types:**
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `refactor`: Code refactoring (no behavior change)
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks (deps, config, etc.)
+- `perf`: Performance improvements
+- `style`: Code style changes (formatting, no logic change)
+
+```bash
+# ✅ GOOD
+feat: Add Prometheus metrics endpoint
+fix: Handle nil pointer in cache lookup
+docs: Update README with setup instructions
+refactor: Extract weather client to separate package
+
+# ❌ BAD
+update: Fix bug  # Use 'fix' instead
+change: Add metrics  # Use 'feat' instead
+```
+
+## Commit Message Content
+
+**Per 100-communication.mdc:**
+- Concise, technically descriptive
+- Explain WHAT changed and WHY
+- Use proper technical terminology
+- No emojis
+
+**What to include:**
+- What component/feature changed
+- Why the change was necessary
+- Reference to relevant rules or requirements when applicable
+
+**What NOT to include:**
+- Implementation details (code shows this)
+- Obvious information ("Fixed bug" without context)
+- Emojis or casual language
+
+## Commit Trailers
+
+**Use trailers for metadata:**
+
+**Co-authored-by:** For AI-assisted commits or multiple contributors.  
+If a model is pinned in the UI, use that exact model name in the trailer.  
+
+**Pinned-model example:**
+```bash
+Co-authored-by: GPT-5.3 Codex <ai@cursor.com>
+```
+
+**Unknown-model/auto example:**
+If the model is not known, use `Cursor Auto`.
+```bash
+Co-authored-by: Cursor Auto <ai@cursor.com>
+```
+
+
+**Fixes/Closes:** Reference issues:
+```bash
+Fixes: #123
+Closes: #456
+```
+
+**Example commit with trailers:**
+
+```bash
+git commit -m "fix: Handle API timeout errors gracefully
+
+Implements retry logic with exponential backoff per
+060-reliability.mdc. Prevents cascading failures when
+external weather API is slow.
+
+Co-authored-by: GPT-5.3 Codex <ai@cursor.com>"
+```
+
+## Atomic Commits
+
+**One logical change per commit:**
+
+```bash
+# ✅ GOOD - Atomic commits
+git commit -m "feat: Add cache implementation"
+git commit -m "feat: Add cache metrics"
+git commit -m "docs: Document cache configuration"
+
+# ❌ BAD - Multiple unrelated changes
+git commit -m "Add cache and fix bug and update docs"
+```
+
+**When to combine:**
+- Related changes that must be together
+- Fixing a bug introduced in same commit
+- Documentation for feature in same commit
+
+**When to separate:**
+- Unrelated features
+- Different concerns (logic vs. tests vs. docs)
+- Changes that can be reviewed independently
+
+## Pre-Commit Checklist
+
+**Before committing, verify:**
+- [ ] No secrets or credentials in code (090-security.mdc)
+- [ ] No `.env` files or sensitive data staged
+- [ ] Commit message follows format
+- [ ] Changes are atomic and logical
+- [ ] Code compiles/builds successfully
+- [ ] Tests pass (if applicable)
+
+## Branching Strategy
+
+**For this take-home project:**
+- Use `main` branch for all work
+- No feature branches required unless explicitly requested
+- Keep history clean and linear when possible
+
+**If branching becomes necessary:**
+- Use descriptive branch names: `feat/cache-implementation`
+- Keep branches short-lived
+- Rebase before merging to maintain clean history
+
+## Commit Frequency
+
+**Commit often, but meaningfully:**
+- After completing a logical unit of work
+- After fixing a bug
+- After adding a feature
+- After significant refactoring
+
+**Avoid:**
+- Committing broken code
+- Committing work-in-progress with "WIP" messages
+- Squashing unrelated changes into one commit
+
+## Security Considerations
+
+**Per 090-security.mdc, never commit:**
+- API keys or credentials
+- `.env` files
+- Secrets or sensitive configuration
+- Hardcoded passwords
+
+**If secrets are accidentally committed:**
+- Rotate credentials immediately
+- Remove from git history
+- Never force-push without coordination
+

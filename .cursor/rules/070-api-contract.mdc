@@ -1,0 +1,167 @@
+---
+description: API contract standards for endpoints, response schema, errors, and HTTP semantics
+alwaysApply: true
+version: 1.1.0
+lastUpdated: 2026-02-11
+---
+
+# API Contract Rules
+
+## Core Principle
+
+API contracts must be stable, explicit, and easy to validate. Prefer predictable compatibility over ad hoc response changes.
+
+## Supported Endpoints
+
+Required endpoints:
+- `GET /weather/{location}`
+- `GET /health`
+- `GET /metrics`
+
+No additional public endpoints unless explicitly requested.
+
+## Weather Endpoint Contract
+
+`GET /weather/{location}` returns current weather data for the location.
+
+### Success response (`200`)
+
+```json
+{
+  "location": "seattle",
+  "temperature": 11.2,
+  "conditions": "Cloudy",
+  "humidity": 78,
+  "windSpeed": 5.4,
+  "source": "openweathermap",
+  "cached": true,
+  "timestamp": "2026-02-11T10:20:30Z"
+}
+```
+
+### Field rules
+- `location`: normalized string (non-empty)
+- `temperature`: number
+- `conditions`: string
+- `humidity`: integer percent (0-100)
+- `windSpeed`: number
+- `timestamp`: RFC3339 UTC timestamp
+- Optional metadata fields (`source`, `cached`) must be documented
+
+### Rules
+- Maintain field names/types once published.
+- Do not leak upstream provider-only fields directly.
+- Normalize units consistently; document unit assumptions.
+
+## Health Endpoint Contract
+
+`GET /health` indicates service readiness.
+
+### Success response (`200` or `503`)
+
+```json
+{
+  "status": "healthy",
+  "service": "weather-alert-service",
+  "version": "dev",
+  "checks": {
+    "weatherApi": "healthy",
+    "cache": "healthy"
+  },
+  "timestamp": "2026-02-11T10:20:30Z"
+}
+```
+
+### Rules
+- `status` must be one of: `healthy`, `idle`, `starting-up`, `shutting-down`, `overloaded`, `degraded`.
+- Use `503` for unhealthy readiness when traffic should not be routed.
+- Keep check output concise and stable.
+
+## Metrics Endpoint Contract
+
+`GET /metrics` serves Prometheus text exposition format.
+
+### Rules
+- Content type must be Prometheus-compatible.
+- Do not wrap metrics output in JSON.
+- Endpoint should remain unauthenticated for local/take-home scope unless explicitly requested.
+
+## Error Contract
+
+Use a consistent JSON error shape for non-2xx responses.
+
+```json
+{
+  "error": {
+    "code": "UPSTREAM_UNAVAILABLE",
+    "message": "Unable to fetch weather data",
+    "requestId": "9f0f61b7-6d8e-4d8b-a9d4-9f26c5f6ad2a"
+  }
+}
+```
+
+### Error field rules
+- `code`: stable machine-readable identifier (UPPER_SNAKE_CASE)
+- `message`: safe human-readable message (no internals)
+- `requestId`: correlation/request identifier for debugging
+
+### Status mapping
+- `400` invalid request/location
+- `404` location not found (if provider semantics support this)
+- `429` rate limited
+- `503` upstream unavailable/timeout
+- `500` unexpected internal error
+
+### Rules
+- Never expose stack traces or raw upstream error payloads.
+- Keep error `code` stable over time.
+- Include `requestId` for all error responses.
+
+## Request Validation Rules
+
+- Reject empty/whitespace `location`.
+- Apply length bounds to `location` (configurable or documented constant).
+- Normalize location value before cache key or provider request.
+- Return `400` for invalid inputs with stable error code.
+
+## HTTP Semantics
+
+- `GET` endpoints are read-only and idempotent.
+- Set `Content-Type: application/json` for JSON responses.
+- Use explicit status codes; do not overload `200` for failures.
+- Avoid silent fallback that changes semantic meaning.
+
+## Backward Compatibility
+
+For any contract change:
+- Additive fields are preferred.
+- Avoid removing/renaming existing fields.
+- Avoid changing data types of existing fields.
+- Document changes in README/changelog section.
+
+## Documentation Requirements
+
+Document in `README.md`:
+- endpoint list and examples
+- request parameters
+- response schemas
+- error codes and meanings
+- sample curl commands
+
+## Testing Requirements
+
+Per `040-testing.mdc`, minimum API contract tests:
+- `GET /weather/{location}` success schema validation
+- invalid location returns `400` with error shape
+- upstream failure maps to `503` with stable error code
+- `GET /health` status and schema validation
+- `GET /metrics` serves Prometheus format
+
+## Avoid
+
+- Undocumented response fields
+- Inconsistent casing in JSON keys
+- Returning different error shapes per endpoint
+- Using provider-specific error messages as-is
+- Breaking changes without explicit migration plan
+

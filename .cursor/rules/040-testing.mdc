@@ -1,0 +1,280 @@
+---
+description: Testing standards, patterns, and requirements for unit and integration tests
+alwaysApply: true
+version: 1.0.0
+lastUpdated: 2026-02-11
+---
+
+# Testing Rules
+
+## Core Principle
+
+Tests verify correctness, document behavior, and prevent regressions. Write tests that are readable, maintainable, and fast.
+Tests should provide value.  Refactoring service code for higher synthetic coverage is not the objective.
+
+## Test Organization
+
+**File naming:**
+- Test files: `*_test.go` in same package as code under test
+- Test functions: `TestXxx` where `Xxx` describes what is tested
+
+**Package structure:**
+- Test in same package (`package service`) for white-box testing
+- Use `package service_test` only if you need to test unexported behavior differently
+
+## Test Structure
+
+**Use arrange-act-assert pattern:**
+
+```go
+func TestWeatherService_GetWeather_CacheHit(t *testing.T) {
+    // Arrange
+    cached := models.WeatherData{Location: "seattle"}
+    mockCache := &mockCache{data: map[string]models.WeatherData{"seattle": cached}}
+    svc := NewWeatherService(nil, mockCache, 5*time.Minute)
+
+    // Act
+    got, err := svc.GetWeather(context.Background(), "seattle")
+
+    // Assert
+    if err != nil {
+        t.Fatalf("GetWeather() error = %v, want nil", err)
+    }
+    if got.Location != cached.Location {
+        t.Errorf("Location = %q, want %q", got.Location, cached.Location)
+    }
+}
+```
+
+## Table-Driven Tests
+
+**Use for input/output permutations:**
+
+```go
+func TestNormalizeLocation(t *testing.T) {
+    tests := []struct {
+        name string
+        in   string
+        want string
+    }{
+        {name: "trim and lower", in: " Seattle ", want: "seattle"},
+        {name: "already normalized", in: "seattle", want: "seattle"},
+        {name: "mixed case", in: "SeAtTlE", want: "seattle"},
+    }
+
+    for _, tc := range tests {
+        t.Run(tc.name, func(t *testing.T) {
+            got := normalizeLocation(tc.in)
+            if got != tc.want {
+                t.Fatalf("normalizeLocation(%q) = %q, want %q", tc.in, got, tc.want)
+            }
+        })
+    }
+}
+```
+
+**Rules:**
+- Use descriptive test case names
+- Keep test cases focused (one concern per case)
+- Use `t.Run()` for subtests to enable parallel execution
+
+## Service Layer Testing
+
+**Test service orchestration with mocks/fakes:**
+
+**Required test coverage:**
+- Cache hit path (returns cached data)
+- Cache miss → upstream success → cache population
+- Upstream failure (error propagation)
+- Invalid input handling
+- Cache error fallback (non-fatal)
+
+**Mock patterns:**
+
+```go
+type mockWeatherClient struct {
+    weather models.WeatherData
+    err     error
+}
+
+func (m *mockWeatherClient) GetCurrentWeather(ctx context.Context, location string) (models.WeatherData, error) {
+    return m.weather, m.err
+}
+```
+
+**Rules:**
+- Mock interfaces, not concrete types
+- Keep mocks simple and focused
+- Verify mock interactions when behavior matters
+
+## Handler Testing
+
+**Use `httptest` for HTTP handler behavior:**
+
+**Required test coverage:**
+- Success path with valid input
+- Validation failures (400 responses)
+- Service error mapping to HTTP status codes
+- Response schema validation
+- Error response shape validation
+
+**Example:**
+
+```go
+func TestHandler_GetWeather_Success(t *testing.T) {
+    mockService := setupMockService()
+    handler := NewHandler(mockService, logger)
+
+    req := httptest.NewRequest("GET", "/weather/seattle", nil)
+    req = setupRequestContext(req, logger)
+    w := httptest.NewRecorder()
+
+    router := mux.NewRouter()
+    router.HandleFunc("/weather/{location}", handler.GetWeather)
+    router.ServeHTTP(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+    }
+
+    var response models.WeatherData
+    if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+        t.Fatalf("Failed to decode: %v", err)
+    }
+    // Assert response fields
+}
+```
+
+**Rules:**
+- Set up request context (correlation ID, logger) in tests
+- Use `mux.NewRouter()` to match production routing
+- Validate both status codes and response bodies
+
+## Reliability Testing
+
+**Per `060-reliability.mdc`, test reliability patterns:**
+
+**Required tests:**
+- Timeout propagation and context cancellation
+- Retry logic: retry on transient errors only
+- Retry logic: no retry on non-retryable errors (4xx except 429)
+- Rate limiting returns `429` with correct error shape
+- Cache fallback behavior (cache error doesn't fail request)
+- Graceful shutdown drains in-flight requests
+
+**Example timeout test:**
+
+```go
+func TestClient_GetCurrentWeather_Timeout(t *testing.T) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+    defer cancel()
+
+    client := NewOpenWeatherClient("key", "url", 100*time.Millisecond)
+    _, err := client.GetCurrentWeather(ctx, "seattle")
+
+    if !errors.Is(err, context.DeadlineExceeded) {
+        t.Errorf("error = %v, want context.DeadlineExceeded", err)
+    }
+}
+```
+
+## API Contract Testing
+
+**Per `070-api-contract.mdc`, validate contract compliance:**
+
+**Required tests:**
+- `GET /weather/{location}` success response schema matches contract
+- Invalid location returns `400` with error shape (`code`, `message`, `requestId`)
+- Upstream failure maps to `503` with `UPSTREAM_UNAVAILABLE` code
+- `GET /health` returns correct status and schema
+- `GET /metrics` serves Prometheus text format
+
+**Schema validation example:**
+
+```go
+func TestHandler_GetWeather_ResponseSchema(t *testing.T) {
+    // ... setup ...
+    
+    var response models.WeatherData
+    if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+        t.Fatalf("Invalid JSON: %v", err)
+    }
+
+    // Validate required fields
+    if response.Location == "" {
+        t.Error("Response missing required field: location")
+    }
+    if response.Temperature == 0 && response.Conditions == "" {
+        t.Error("Response missing weather data fields")
+    }
+}
+```
+
+## Test Data Management
+
+**Keep test data realistic but minimal:**
+
+**Rules:**
+- Use realistic but simple test data
+- Avoid hardcoded secrets (use test fixtures if needed)
+- Create test helpers for common setup patterns
+- Keep test data close to tests (inline or test fixtures)
+
+## Deterministic Tests
+
+**Tests must be deterministic and isolated:**
+
+**Rules:**
+- No real network calls (use mocks)
+- No file system dependencies (use in-memory alternatives)
+- No time-dependent logic without time injection
+- Reset shared state between tests
+- Use `context.Background()` in tests (not request context)
+
+## Test Helpers
+
+**Create helpers for common patterns:**
+
+```go
+func setupRequestContext(req *http.Request, logger *zap.Logger) *http.Request {
+    ctx := req.Context()
+    ctx = context.WithValue(ctx, "logger", logger)
+    ctx = context.WithValue(ctx, "correlation_id", "test-correlation-id")
+    return req.WithContext(ctx)
+}
+```
+
+**Rules:**
+- Name helpers clearly (`setupX`, `createY`)
+- Keep helpers focused and reusable
+- Document non-obvious helper behavior
+
+## Coverage Expectations
+
+**Aim for meaningful coverage:**
+
+**Rules:**
+- Focus on critical paths and error cases
+- Test boundary conditions (empty strings, nil values, timeouts)
+- Test error propagation and mapping
+- Don't chase 100% coverage; prioritize important behavior
+
+## Running Tests
+
+**Test commands:**
+- `go test ./...` - Run all tests
+- `go test ./internal/service/... -v` - Run service tests with verbose output
+- `go test -race ./...` - Run with race detector
+- `go test -cover ./...` - Show coverage
+
+**Pre-commit:**
+- All tests must pass before committing
+- Run tests locally before pushing
+
+## Avoid
+
+- Tests that depend on external services
+- Flaky tests (time-dependent without control)
+- Tests that test implementation details unnecessarily
+- Overly complex test setup that obscures what's being tested
+- Tests that don't clearly show what behavior is verified

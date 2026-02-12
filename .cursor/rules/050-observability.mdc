@@ -1,0 +1,320 @@
+---
+description: Observability patterns for Prometheus metrics, structured logging, and correlation IDs
+alwaysApply: true
+version: 1.1.1
+lastUpdated: 2026-02-11
+---
+
+# Observability Rules
+
+## Core Principle
+
+**Logging supports actionable intelligence.** Our goal is to log events that matter and support intelligent answers to relevant questions.
+
+We log decisions, boundaries, and failures. We do not log routine success paths, duplicate metrics, or speculative detail. Logging must remain reliable and predictable even when the system is degraded, and it must never become a source of instability.
+
+**Note on auditability:** In production systems, compliance and audit requirements may necessitate logging successful requests for audit trails. For this exercise, auditability/compliance logging is out of scope per 000-goal.mdc. We focus on operational observability (metrics + actionable logs) rather than comprehensive audit trails. Successful requests are captured in metrics, not logs.
+
+## Prometheus Metrics
+
+### Implemented Metrics
+
+**Request layer:** `httpRequestsTotal` (method, route, statusCode), `httpRequestDurationSeconds` (per request), `httpRequestsInFlight` (gauge). Use `route` from path template (e.g. `/weather/{location}`) to avoid cardinality.
+
+**External API:** `weatherApiCallsTotal`, `weatherApiDurationSeconds` (per request), `weatherApiRetriesTotal`.
+
+**Cache:** `cacheHitsTotal`. Cache misses = `weatherApiCallsTotal - weatherApiRetriesTotal`. Hit rate = hits/(hits+misses).
+
+**Business:** `weatherQueriesTotal`, `weatherQueriesByLocationTotal` (location label). Location uses allow-list (config `metrics.tracked_locations`); others go to `other`. DDoS/poisoning resistant.
+
+**Runtime:** Process and Go collectors (CPU, memory, goroutines, threads).
+
+**Query patterns:** Counters: `rate(metric[5m])`. Histograms: `histogram_quantile(0.95, rate(..._bucket[5m]))`. CPU: `rate(process_cpu_seconds_total[1m])`.
+
+### Metric Naming Conventions
+
+**Use camelCase naming:**
+- Use `Total` suffix for counters
+- Use `Seconds`, `Bytes`, `Ratio` suffixes for units
+- Use camelCase throughout
+- Prefix with service/component name if needed
+- Keep labels minimal and meaningful (also camelCase)
+
+```go
+// ✅ GOOD
+httpRequestsTotal{method="GET", route="/weather/{location}", statusCode="2xx"}
+cacheHitRatio{cacheType="weather"}
+
+// ❌ BAD
+httpRequests{method="GET"}  // Missing Total suffix
+cache_hits{cache="weather"}  // snake_case, ambiguous unit
+```
+
+### Documenting Metrics
+
+**Every metric must have:**
+1. Inline comment explaining what it measures
+2. Help text in Prometheus definition
+3. Comment explaining what to watch for
+
+```go
+// Weather API call duration - tracks external API response time
+// Watch for: p95 > 2s (upstream degradation) or p99 > 5s (timeout risk)
+weatherAPIDuration = promauto.NewHistogramVec(
+    prometheus.HistogramOpts{
+        Name:    "weatherAPIDurationSeconds",
+        Help:    "Weather API call latency in seconds. Tracks external API performance.",
+        Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 10},
+    },
+    []string{"status"},
+)
+```
+
+## Structured Logging
+
+### Logging Philosophy
+
+**We log decisions, boundaries, and failures. We do not log routine success paths, duplicate metrics, or speculative detail.**
+
+**What to log:**
+- **Decisions**: Important choices made (e.g., cache eviction strategy, fallback behavior)
+- **Boundaries**: Rate limits hit, timeouts, capacity thresholds exceeded
+- **Failures**: Errors, retries, degraded states
+- **State changes**: Service startup, shutdown, configuration reloads
+
+**What NOT to log:**
+- Sensitive values, security keys etc @090-security.mdc
+- Routine successful requests (metrics cover this)
+- Every cache hit (metrics cover this)
+- Speculative debugging details
+- Information already captured in metrics
+
+**Reliability requirements:**
+- Logging must remain reliable and predictable even when the system is degraded
+- Logging must never become a source of instability
+- Use async/buffered logging if needed to prevent blocking
+
+### Correlation IDs
+
+**Every request must have a correlation ID for tracing:**
+
+```go
+import (
+    "github.com/google/uuid"
+    "github.com/gorilla/mux"
+    "go.uber.org/zap"
+)
+
+// Middleware to add correlation ID to requests
+func correlationIDMiddleware(logger *zap.Logger) mux.MiddlewareFunc {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Get or generate correlation ID
+            corrID := r.Header.Get("X-Correlation-ID")
+            if corrID == "" {
+                corrID = uuid.New().String()
+            }
+            
+            // Add to request context
+            ctx := context.WithValue(r.Context(), "correlation_id", corrID)
+            r = r.WithContext(ctx)
+            
+            // Add to response header
+            w.Header().Set("X-Correlation-ID", corrID)
+            
+            // Add to logger context
+            logger := logger.With(zap.String("correlation_id", corrID))
+            ctx = context.WithValue(ctx, "logger", logger)
+            r = r.WithContext(ctx)
+            
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+
+// Usage in handlers
+func weatherHandler(w http.ResponseWriter, r *http.Request) {
+    logger := r.Context().Value("logger").(*zap.Logger)
+    // Don't log routine success - metrics cover this
+    // Only log decisions, boundaries, or failures
+    
+    // Example: Logging a boundary (cache miss threshold exceeded)
+    if cacheMissRate > threshold {
+        logger.Warn("High cache miss rate detected",
+            zap.String("location", location),
+            zap.Float64("missRate", cacheMissRate),
+        )
+    }
+    
+    // Example: Logging a failure
+    if err != nil {
+        logger.Error("Failed to fetch weather",
+            zap.String("location", location),
+            zap.Error(err),
+        )
+    }
+    // ... handler logic
+}
+```
+
+### Log Levels
+
+**Use appropriate log levels:**
+
+```go
+// ✅ GOOD - Logging decisions and boundaries
+logger.Info("Cache eviction triggered", 
+    zap.String("reason", "sizeLimit"),
+    zap.Int("evictedCount", count),
+)  // Decision: cache eviction strategy executed
+
+logger.Warn("Rate limit approaching",
+    zap.String("endpoint", endpoint),
+    zap.Int("currentRate", rate),
+    zap.Int("limit", limit),
+)  // Boundary: approaching capacity
+
+logger.Error("API call failed after retries",
+    zap.Error(err),
+    zap.Int("retryCount", retries),
+    zap.String("location", loc),
+)  // Failure: exhausted retry attempts
+
+// ❌ BAD - Don't log routine success paths
+logger.Info("Request processed", zap.String("location", loc), zap.Int("status", 200))  // Metrics cover this
+logger.Info("Cache hit", zap.String("key", key))  // Metrics cover this
+logger.Debug("Cache lookup", zap.String("key", cacheKey))  // Speculative detail
+```
+
+### Structured Fields
+
+**Always use structured fields, never string formatting:**
+
+```go
+// ✅ GOOD
+logger.Info("Weather fetched",
+    zap.String("correlation_id", corrID),
+    zap.String("location", location),
+    zap.Float64("temperature", temp),
+    zap.Duration("duration", elapsed),
+)
+
+// ❌ BAD
+logger.Info(fmt.Sprintf("Weather fetched for %s: %.1f°C in %v", location, temp, elapsed))
+```
+
+### Never Log Sensitive Data
+
+**See 090-security.mdc for details. Summary:**
+- Never log API keys, credentials, or secrets
+- Log that credentials are present, not their values
+- Mask sensitive data in error messages
+
+```go
+// ✅ GOOD
+logger.Info("API client initialized", zap.Bool("api_key_set", apiKey != ""))
+
+// ❌ BAD
+logger.Info("API client initialized", zap.String("api_key", apiKey))
+```
+
+## Request Tracing
+
+### Correlation ID Propagation
+
+**Propagate correlation IDs to downstream calls:**
+
+```go
+func fetchWeather(ctx context.Context, location string) (*Weather, error) {
+    logger := ctx.Value("logger").(*zap.Logger)
+    corrID := ctx.Value("correlation_id").(string)
+    
+    // Add correlation ID to external API request
+    req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+    req.Header.Set("X-Correlation-ID", corrID)
+    
+    // Don't log routine API calls - metrics cover this
+    // Only log if it's a decision, boundary, or failure
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        logger.Error("External API call failed",
+            zap.String("location", location),
+            zap.Error(err),
+        )
+        return nil, err
+    }
+    // ... handle response
+}
+```
+
+## Metrics Endpoint
+
+**Expose `/metrics` endpoint:**
+
+```go
+import (
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func setupRoutes() *mux.Router {
+    r := mux.NewRouter()
+    
+    // Prometheus metrics endpoint
+    r.Handle("/metrics", promhttp.Handler()).Methods("GET")
+    
+    // Application endpoints
+    r.HandleFunc("/weather/{location}", weatherHandler).Methods("GET")
+    r.HandleFunc("/health", healthHandler).Methods("GET")
+    
+    return r
+}
+```
+
+## Alerting Configuration
+
+**Include sample `prometheus.yaml` and `alertmanager.yaml`:**
+
+Create these files to demonstrate alerting strategy:
+- `prometheus.yaml` - Scrape configuration
+- `alertmanager.yaml` - Alert routing and notification
+
+**Example alert rules:**
+
+```yaml
+# alerts.yaml
+groups:
+  - name: weather_service
+    rules:
+      - alert: HighErrorRate
+        expr: rate(httpRequestsTotal{statusCode=~"5.."}[5m]) > 0.1
+        for: 5m
+        annotations:
+          summary: "High error rate detected"
+          
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, httpRequestDurationSeconds) > 1
+        for: 5m
+        annotations:
+          summary: "p95 latency exceeds 1 second"
+          
+      - alert: ExternalAPIDown
+        expr: rate(weatherAPICallsTotal{status="error"}[5m]) > 0.5
+        for: 2m
+        annotations:
+          summary: "Weather API failing"
+```
+
+## Instrumentation Checklist
+
+Before considering observability complete, verify:
+- [ ] HTTP request rates instrumented (counter)
+- [ ] HTTP request latencies instrumented (histogram with percentiles)
+- [ ] External API calls instrumented (rate + latency)
+- [ ] Cache performance instrumented (hits/misses)
+- [ ] Error rates tracked by type
+- [ ] Correlation IDs in all logs
+- [ ] Structured logging throughout
+- [ ] No sensitive data in logs (090-security.mdc)
+- [ ] `/metrics` endpoint exposed
+- [ ] All metrics have inline comments explaining what to watch for
+- [ ] Sample prometheus.yaml and alertmanager.yaml included

@@ -1,0 +1,57 @@
+---
+description: Preserve existing working code; verify before overwrite; prefer incremental changes
+alwaysApply: true
+version: 1.0.0
+lastUpdated: 2026-02-11
+---
+
+# Preserve Existing Work
+
+## Core Principle
+
+**Do not overwrite or replace without first understanding what exists.** Existing files may contain working code, prior decisions, or structure that the agent cannot see. Assume the user has invested effort; preserve it unless change is explicitly requested.
+
+## Before Creating or Replacing Files
+
+1. **Check if the file exists** – Use `Read`, `Glob`, or `Grep` to confirm. Do not assume a file is missing because it was not in recent context.
+2. **Read the existing content** – If the file exists, read it fully before any edit.
+3. **Understand the current behavior** – Note what the code does, how it is wired, what config it uses. Do not replace working patterns with different approaches without explicit request.
+
+## When Adding or Fixing Something
+
+| Action | Do | Do Not |
+|--------|-----|--------|
+| Adding a feature | Read related files; integrate with existing patterns; make minimal targeted changes | Rewrite entire modules; introduce a new pattern that conflicts with existing code |
+| Fixing a bug | Identify the specific failing path; change only what is necessary | Refactor unrelated code "while you're there" |
+| Replacing missing code | Verify it is actually missing; check if similar logic exists elsewhere; match existing style | Assume nothing exists and create from scratch; overwrite files that might have been there |
+| Wiring dependencies | Follow existing wiring patterns (e.g. config loading, env vars) | Replace config/dependency approach without explicit request |
+
+## Config and Project Structure
+
+- **Respect existing config** – If the project uses YAML config, env files, or secrets, use them. Do not replace with env-only or hardcoded defaults unless explicitly asked.
+- **Preserve project layout** – Do not relocate files, rename packages, or change directory structure without explicit request.
+- **Match conventions** – Follow how the project already loads config, wires handlers, and structures packages.
+
+## Pace and Deliberation
+
+- **Read before writing** – When touching a file, read it first. For multi-file changes, read the relevant files before planning edits.
+- **One concern per change** – Avoid bundling unrelated fixes or refactors. If the user asks to fix X, fix X. Do not "also improve" Y and Z.
+- **Confirm scope** – If a request is ambiguous and could affect working code, ask or propose a minimal approach before making broad changes.
+
+## Examples
+
+```text
+❌ User: "The service doesn't start."
+   Agent: Creates new main.go and config.go from scratch, overwriting what existed.
+
+✅ User: "The service doesn't start."
+   Agent: Reads main.go, config loading, and logs. Identifies the actual failure (e.g. missing config file, wrong path). Makes a targeted fix.
+```
+
+```text
+❌ User: "We need to use the config YAMLs."
+   Agent: Replaces env-based startup with config.Load(), removing all env fallbacks.
+
+✅ User: "We need to use the config YAMLs."
+   Agent: Reads current main and config. Adds or updates config loading to use YAML as primary, preserving env overrides if they already exist.
+```

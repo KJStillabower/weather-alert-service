@@ -1,0 +1,23 @@
+# Multi-stage build for Weather Alert Service
+# Build context: project root (parent of samples/containers/)
+FROM golang:1.23-alpine AS builder
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd/ internal/ ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o service ./cmd/service
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY --from=builder /build/service ./
+COPY config/ ./config/
+
+ENV ENV_NAME=prod
+ENV SERVER_PORT=8080
+EXPOSE 8080
+
+ENTRYPOINT ["./service"]

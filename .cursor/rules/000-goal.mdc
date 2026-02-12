@@ -1,0 +1,26 @@
+---
+description: Project goal and scope for a Weather Alert Service
+alwaysApply: true
+version: 1.0.1
+lastUpdated: 2026-02-11
+---
+
+# Weather Alert Service
+The goal of this project is for a Weather Alert Service.
+
+## Overall
+Build a production-ready backend Golang service that:
+- Exposes GET /weather/{location}, GET /health, GET /metrics
+- Integrates with a third-party weather API 
+- Caches responses appropriately
+- Implements comprehensive observability
+- Handles failures gracefully 
+
+## Ordered Priorities: 
+- correctness, 
+- clarity & maintainability
+- operational readiness
+
+## Avoid:
+- scope creep 
+- Extra features that are not requested unless directly supporting ordered priorities

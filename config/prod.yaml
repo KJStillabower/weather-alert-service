@@ -1,0 +1,44 @@
+# Production environment configuration
+
+testing_mode: false
+
+server:
+  port: "80"
+
+weather_api:
+  url: "https://api.openweathermap.org/data/2.5/weather"
+  timeout: "5s"
+
+request:
+  timeout: "10s"
+
+# in_memory | memcached; use memcached for shared cache across instances
+cache:
+  backend: "memcached"
+  ttl: "5m"
+  memcached:
+    addrs: "localhost:11211"
+    timeout: "500ms"
+    max_idle_conns: 2
+
+reliability:
+  retry_max_attempts: 3
+  retry_base_delay: "200ms"
+  retry_max_delay: "5s"
+  rate_limit_rps: 100
+  rate_limit_burst: 250
+
+shutdown:
+  timeout: "30s"
+
+lifecycle:
+  ready_delay: "3s"
+  overload_window: "60s"
+  overload_threshold_pct: 80
+  idle_threshold_req_per_min: 5
+  idle_window: "5m"
+  minimum_lifespan: "5m"
+  degraded_window: "60s"
+  degraded_error_pct: 5
+  degraded_retry_initial: "1m"
+  degraded_retry_max: "13m"

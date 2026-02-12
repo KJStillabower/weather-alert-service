@@ -1,0 +1,191 @@
+---
+description: Reliability patterns for retries, timeouts, rate limits, graceful degradation, and shutdown
+alwaysApply: true
+version: 1.1.0
+lastUpdated: 2026-02-11
+---
+
+# Reliability Rules
+
+## Core Principle
+
+Reliability is controlled failure behavior. Prefer predictable degradation over unstable recovery attempts.
+
+## Reliability Boundaries
+
+Apply reliability controls at clear boundaries:
+- Incoming HTTP requests
+- Outbound weather API calls
+- Cache read/write paths
+- Startup and shutdown lifecycle
+
+Avoid stacking hidden controls across layers.
+
+## Timeouts and Deadlines
+
+All network and dependency calls must use explicit timeouts.
+
+```go
+ctx, cancel := context.WithTimeout(parentCtx, cfg.WeatherAPITimeout)
+defer cancel()
+resp, err := client.Do(req.WithContext(ctx))
+```
+
+### Rules
+- No unbounded external calls.
+- No `context.Background()` on request path.
+- Timeout values must be config-driven.
+- Handler timeout budget must be greater than downstream timeout + overhead.
+
+## Retry Policy
+
+Retry only transient failures (timeouts, 429, selected 5xx), never invalid requests.
+
+```go
+for attempt := 0; attempt < maxAttempts; attempt++ {
+    resp, err := call()
+    if !isRetryable(err, resp) {
+        return resp, err
+    }
+    time.Sleep(backoffWithJitter(baseDelay, attempt, maxDelay))
+}
+```
+
+### Rules
+- Use exponential backoff with jitter.
+- Set max attempts and max elapsed retry time.
+- Do not retry 4xx except `429`.
+- Respect context cancellation while sleeping/retrying.
+- Instrument retries (`retryAttemptsTotal`, `retryExhaustedTotal`).
+
+## Rate Limiting
+
+Protect the service and upstream dependencies from overload.
+
+### Rules
+- Apply per-instance request limiting for `/weather/{location}`.
+- Return `429` with stable error response when limit exceeded.
+- Prefer token-bucket or leaky-bucket algorithm.
+- Make limits configurable (steady-state + burst).
+- Emit metrics for allowed/denied requests.
+
+## Cache Reliability
+
+Cache is a resilience tool, not a correctness authority.
+
+### Rules
+- Cache-aside pattern: read cache first, fallback to upstream.
+- Cache write failure should be non-fatal by default.
+- Use TTLs; avoid unbounded retention.
+- Avoid cache stampede: add request coalescing or short lock where needed.
+- Emit hit/miss/error metrics for cache operations.
+
+## Graceful Degradation
+
+Define behavior when dependencies are unhealthy.
+
+### Recommended fallback order
+1. Fresh cache hit
+2. Stale cache (if policy allows)
+3. Upstream call
+4. Controlled failure (`503`) with actionable error body
+
+### Rules
+- Prefer stale-but-reasonable data over total outage when safe.
+- Include degraded-state indicators in logs/metrics.
+- Do not return partial malformed payloads.
+
+## Circuit Breaking (Optional for Take-home)
+
+Circuit breaking is optional but acceptable if implemented minimally.
+
+### Rules
+- Keep thresholds simple and config-driven.
+- Use half-open probes to recover.
+- Avoid aggressive flapping due to short windows.
+- If not implemented, document why and rely on timeout+retry+rate limiting.
+
+## Error Handling and Mapping
+
+Map reliability failures to stable HTTP semantics:
+- timeout/dependency unavailable -> `503`
+- rate limit exceeded -> `429`
+- invalid client request -> `400`
+- unexpected internal error -> `500`
+
+### Rules
+- Do not leak provider/internal details in response body.
+- Include operation context in internal wrapped errors.
+- Keep external error contract stable.
+
+## Health Checks
+
+`/health` should represent service readiness to receive traffic.
+
+### Rules
+- Return degraded (503) when critical dependencies are not operational for configured window.
+- Avoid expensive deep checks on every probe.
+- Provide concise status fields (healthy/degraded). Degraded covers API key failure and operational errors (downstream failures, timeouts).
+
+## Graceful Shutdown
+
+Support controlled shutdown to prevent dropped requests.
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+<-ctx.Done()
+shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+defer cancel()
+_ = server.Shutdown(shutdownCtx)
+```
+
+### Rules
+- Stop accepting new requests first.
+- Allow in-flight requests to complete within timeout.
+- Close clients and flush telemetry/logging where possible.
+- Emit shutdown start/end events.
+
+## Configuration Requirements
+
+Externalize and document reliability controls:
+- `WEATHER_API_TIMEOUT`
+- `REQUEST_TIMEOUT`
+- `RETRY_MAX_ATTEMPTS`
+- `RETRY_BASE_DELAY`
+- `RETRY_MAX_DELAY`
+- `RATE_LIMIT_RPS`
+- `RATE_LIMIT_BURST`
+- `CACHE_TTL`
+- `SHUTDOWN_TIMEOUT`
+
+## Testing Requirements
+
+Per `040-testing.mdc`, minimum reliability tests:
+- timeout propagation and cancellation
+- retry on transient errors only
+- no retry on non-retryable errors
+- rate limiting returns `429`
+- cache fallback behavior
+- graceful shutdown drains in-flight requests
+
+## Observability Tie-in
+
+Per `050-observability.mdc`, emit actionable signals:
+- request latency and error-rate trends
+- retry counts and exhaustion
+- rate-limit denials
+- dependency timeout/failure rates
+- degraded-mode entry/exit events
+
+Log decisions, boundaries, and failures only.
+
+## Avoid
+
+- Infinite retries
+- Retrying in both client and service layers without coordination
+- Hardcoded timeout/limit values
+- Treating cache as source of truth
+- Failing open on unknown critical states
+
