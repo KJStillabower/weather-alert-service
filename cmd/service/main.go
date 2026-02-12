@@ -68,6 +68,7 @@ func main() {
 		OverloadWindow:         cfg.OverloadWindow,
 		OverloadThresholdPct:   cfg.OverloadThresholdPct,
 		RateLimitRPS:           cfg.RateLimitRPS,
+		RateLimitBurst:         cfg.RateLimitBurst,
 		DegradedWindow:         cfg.DegradedWindow,
 		DegradedErrorPct:       cfg.DegradedErrorPct,
 		DegradedRetryInitial:   cfg.DegradedRetryInitial,
