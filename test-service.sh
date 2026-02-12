@@ -374,36 +374,55 @@ synthetic_json() {
     echo "$1" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('$2', ''))" 2>/dev/null || echo ""
 }
 
-# synthetic_load
-# Synthetic test: injects 4 load batches (30 req each, 1s apart), expects overload on 4th.
-# Requires testing_mode and GET /test. Returns 1 on failure.
-synthetic_load() {
-    log_info "Synthetic: Load (trigger overload)..."
+# synthetic_get_config
+# Fetches config from GET /test config object. Sets: OVERLOAD_THRESHOLD, RATE_LIMIT_RPS, RATE_LIMIT_BURST, DEGRADED_ERROR_PCT.
+# Returns 1 if GET /test fails or config missing.
+synthetic_get_config() {
     local response
     response=$(synthetic_curl GET /test) || true
-    if ! echo "$response" | grep -q '"total_requests_in_window"'; then
-        log_error "GET /test failed or testing_mode off (404)"
+    if ! echo "$response" | grep -q '"config"'; then
+        log_error "GET /test missing config (upgrade service or testing_mode off)"
         return 1
     fi
-    for i in 1 2 3 4 5; do
-        response=$(synthetic_curl POST /test/load '{"count": 50}')
-        local state
+    OVERLOAD_THRESHOLD=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('config',{}).get('overload_threshold',''))" 2>/dev/null)
+    RATE_LIMIT_RPS=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('config',{}).get('rate_limit_rps',''))" 2>/dev/null)
+    RATE_LIMIT_BURST=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('config',{}).get('rate_limit_burst',''))" 2>/dev/null)
+    DEGRADED_ERROR_PCT=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('config',{}).get('degraded_error_pct',''))" 2>/dev/null)
+    if [ -z "$OVERLOAD_THRESHOLD" ] || [ "$OVERLOAD_THRESHOLD" = "0" ]; then
+        log_error "overload_threshold is 0 (rate limiter disabled?)"
+        return 1
+    fi
+}
+
+# synthetic_load
+# Synthetic test: 4 load passes, config-driven batch size. Expects overload on 4th pass.
+# Requires testing_mode, GET /test with config. Returns 1 on failure.
+synthetic_load() {
+    log_info "Synthetic: Load (trigger overload)..."
+    synthetic_get_config || return 1
+    local batch_size spacing i
+    batch_size=$(( (OVERLOAD_THRESHOLD + 20 + 3) / 4 ))
+    spacing=1
+    for i in 1 2 3 4; do
+        local response state message
+        response=$(synthetic_curl POST /test/load "{\"count\": $batch_size}")
         state=$(synthetic_json "$response" "state")
         message=$(synthetic_json "$response" "message")
         echo "$message"
-        if [ "$i" -lt 5 ]; then
+        if [ "$i" -lt 4 ]; then
             if [ "$state" != "healthy" ]; then
-                log_error "Load step $i: expected state=healthy, got $state"
+                log_error "Load pass $i: expected state=healthy, got $state"
                 return 1
             fi
         else
             if [ "$state" != "overloaded" ]; then
-                log_error "Load loop $i: expected state=overloaded, got $state"
+                log_error "Load pass $i: expected state=overloaded, got $state"
                 return 1
             fi
         fi
-        [ "$i" -lt 5 ] && sleep 1
+        [ "$i" -lt 4 ] && sleep "$spacing"
     done
+    local response denied errors total window
     response=$(synthetic_curl GET /test)
     denied=$(synthetic_json "$response" "denied_requests_in_window")
     errors=$(synthetic_json "$response" "errors_in_window")
@@ -435,44 +454,58 @@ synthetic_reset() {
 }
 
 # synthetic_degraded
-# Synthetic test: prevent_clear, load 39 successes + error 1 (healthy), error +2 (degraded).
-# Load goes through rate limiter (2/s, burst 5); batches of 5 with 3s spacing yield ~40 successes.
+# Synthetic test: load successes, inject errors 2x (under limit -> healthy, over limit -> degraded).
+# Config-driven: min_successes and error counts from degraded_error_pct.
 # Returns 1 on failure.
 synthetic_degraded() {
     log_info "Synthetic: Error budget test (healthy -> degraded)"
+    synthetic_get_config || return 1
     synthetic_curl POST /test/prevent_clear >/dev/null
-    sleep 2 #build a buffer.
-    local response i
-    for i in 1 2; do
-        synthetic_curl POST /test/load '{"count": 10}' >/dev/null
+    sleep 2
+    local min_successes batch_size accepted response total denied
+    min_successes=$(( (100 + DEGRADED_ERROR_PCT - 1) / DEGRADED_ERROR_PCT ))
+    batch_size=${RATE_LIMIT_BURST:-10}
+    accepted=0
+    while [ "$accepted" -lt "$min_successes" ]; do
+        synthetic_curl POST /test/load "{\"count\": $batch_size}" >/dev/null
+        response=$(synthetic_curl GET /test)
+        total=$(synthetic_json "$response" "total_requests_in_window")
+        denied=$(synthetic_json "$response" "denied_requests_in_window")
+        accepted=$((total - denied))
+        sleep 1
     done
-    response=$(synthetic_curl GET /test)
-    denied=$(synthetic_json "$response" "denied_requests_in_window")
-    total=$(synthetic_json "$response" "total_requests_in_window")
-    accepted=$((total - denied))
-    echo "Accepted: $accepted requests, generating errors..."
+    echo "Accepted: $accepted requests, injecting errors (under then over limit)..."
     response=$(synthetic_curl POST /test/error '{"count": 1}')
     local state pct
     state=$(synthetic_json "$response" "state")
     pct=$(synthetic_json "$response" "error_rate_pct")
     if [ "$state" != "healthy" ]; then
-        log_error "Degraded step 4: expected state=healthy after 1 error, got $state (pct=$pct)"
+        log_error "Degraded: after 1 error expected state=healthy, got $state (pct=$pct)"
         return 1
     fi
-    response=$(synthetic_curl POST /test/error '{"count": 4}')
+    local second_err num den
+    num=$(( DEGRADED_ERROR_PCT * (accepted + 1) - 100 ))
+    den=$(( 100 - DEGRADED_ERROR_PCT ))
+    if [ "$num" -le 0 ]; then
+        second_err=1
+    else
+        second_err=$(( (num + den - 1) / den ))
+        [ "$second_err" -lt 1 ] && second_err=1
+    fi
+    response=$(synthetic_curl POST /test/error "{\"count\": $second_err}")
     state=$(synthetic_json "$response" "state")
     pct=$(synthetic_json "$response" "error_rate_pct")
     if [ "$state" != "degraded" ]; then
-        log_error "Degraded step 5: expected state=degraded, got $state (pct=$pct)"
+        log_error "Degraded: after $second_err more errors expected state=degraded, got $state (pct=$pct)"
         return 1
     fi
     response=$(synthetic_curl GET /health)
     if ! echo "$response" | grep -qE '"status"[[:space:]]*:[[:space:]]*"degraded"'; then
-        log_error "Degraded step 6: /health should return status=degraded"
+        log_error "Degraded: /health should return status=degraded"
         return 1
     fi
-    err_total=$((accepted + 5))
-    log_success "Degraded: error rate exceeded threshold at $pct% error rate (5 of $err_total requests)"
+    local err_total=$((1 + second_err))
+    log_success "Degraded: error rate exceeded threshold at $pct% ($err_total errors)"
 }
 
 # synthetic_recovery
