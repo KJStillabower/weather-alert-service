@@ -20,6 +20,9 @@ vendor/
 # Go workspace file
 go.work
 
+# Local evaluation (prompt vs repo assessment)
+evaluation.md
+
 # Environment files
 .env
 .env.local
