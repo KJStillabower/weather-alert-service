@@ -17,7 +17,7 @@
 - Streamlined `010-role.mdc` (removed redundant Communication Style section, condensed verbose sections)
 - Fixed 6 incorrect cross-references (`090-security.mdc` → `020-security.mdc`)
 - Reduced redundant "Per/Follow" directives, changed to navigational "See" references
-- Updated `docs/About.md` to reflect new rule structure
+- Updated `docs/about.md` to reflect new rule structure
 
 **Remaining:**
 - Evaluate remaining `alwaysApply: true` rules: `030-patterns.mdc`, `060-reliability.mdc`, `100-documentation-communication.mdc` (could potentially be context-specific)
@@ -121,7 +121,7 @@ Initial rule set had 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 - [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules)
 - [x] Total rule lines reduced (~1935 lines from ~2174, ~11% reduction; streamlined 001 and 010, could reduce more by making remaining rules context-specific)
 - [x] Cross-references minimized or removed (fixed incorrect refs, reduced redundant "Per/Follow" directives)
-- [x] Documentation updated if rule structure changes (`docs/About.md` updated)
+- [x] Documentation updated if rule structure changes (`docs/about.md` updated)
 
 ## References
 
@@ -140,7 +140,7 @@ Initial rule set had 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 #### External References by File
 
-##### docs/About.md
+##### docs/about.md
 **Lines 71-79:** Lists all 10 rules in a table:
 - `000-goal.mdc`
 - `001-preserve-existing.mdc`
@@ -211,7 +211,7 @@ Rules reference each other extensively:
 - Rules only referenced in other rules: Most can be merged if cross-refs are updated
 
 **Requires doc updates:**
-- `docs/About.md` - Update rule list table
+- `docs/about.md` - Update rule list table
 - `docs/observability.md` - Update inline references
 - Cross-references within rules themselves
 

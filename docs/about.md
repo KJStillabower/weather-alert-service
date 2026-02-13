@@ -14,19 +14,25 @@ Operational Instructions will be in the [README.md](README.md) file
 ```
 Weather/
 ├── .cursor/
-│   └── rules/          # Cursor AI rules for consistent development
+│   └── rules/          # Cursor AI rules for consistent development (10 rule files)
+├── .github/
+│   └── workflows/      # CI/CD workflows
 ├── cmd/
 │   └── service/        # Application entrypoint
 ├── config/
 │   ├── dev.yaml        # Development config
+│   ├── dev_localcache.yaml  # Development config (in-memory cache)
 │   ├── prod.yaml       # Production config
 │   └── secrets.yaml    # API key only (gitignored)
 ├── docs/               # Design and plan documentation
-│   ├── env-yaml-plan.md
-│   ├── logging-plan.md
-│   └── observability-metrics-plan.md
+│   ├── about.md        # This file - project overview and design
+│   ├── observability.md  # Comprehensive observability guide
+│   ├── test-coverage-summary.md  # Test coverage overview
+│   ├── rule-simplification-summary.md  # Rules simplification summary
+│   ├── plans/         # Design plan documents (historical context)
+│   └── issues/        # GitHub issue tracking documents
 ├── internal/
-│   ├── cache/          # In-memory cache (cache-aside)
+│   ├── cache/          # Cache implementations (in-memory, memcached)
 │   ├── client/         # OpenWeatherMap API client
 │   ├── config/         # Configuration loading
 │   ├── http/           # Handlers, middleware (correlation ID, metrics, rate limit, timeout)
@@ -34,11 +40,11 @@ Weather/
 │   ├── observability/  # Metrics (Prometheus), logging (zap)
 │   └── service/        # Business logic layer
 ├── samples/
-│   └── alerting/       # Prometheus + Alertmanager config samples (PagerDuty, FireHydrant)
+│   ├── alerting/       # Prometheus + Alertmanager config samples
+│   └── containers/     # Docker/Kubernetes build scripts
 ├── test-service.sh     # Build, start, test, stop automation
 ├── prompt.pdf          # Original assessment requirements
-├── README.md           # Setup, usage, API documentation
-└── About.md            # This file
+└── README.md           # Setup, usage, API documentation
 ```
 
 ## Key Design Decisions
@@ -68,19 +74,21 @@ Weather/
 
 This project uses Cursor rules (`.cursor/rules/*.mdc`) to guide AI-assisted development:
 
+**Always-Apply Rules (7 files):**
 - `000-goal.mdc` - Project scope and priorities
 - `001-preserve-existing.mdc` - Critical safety rule (preserve existing work)
 - `010-role.mdc` - AI assistant collaboration approach
 - `020-security.mdc` - Security best practices
 - `030-patterns.mdc` - Go language patterns and service architecture
-- `040-testing.mdc` - Testing standards and patterns
-- `050-observability.mdc` - Metrics and logging patterns
 - `060-reliability.mdc` - Reliability patterns (retries, timeouts, rate limits)
-- `070-api-contract.mdc` - API endpoint contracts
-- `020-security.mdc` - Security best practices
 - `100-documentation-communication.mdc` - Communication, git commits, and documentation standards
 
-**For AI assistants:** Read these rules to understand project standards, patterns, and priorities before making changes.
+**Context-Specific Rules (3 files, load only when editing relevant files):**
+- `040-testing.mdc` - Testing standards (`globs: **/*_test.go`)
+- `050-observability.mdc` - Metrics and logging patterns (`globs: **/observability/**`)
+- `070-api-contract.mdc` - API endpoint contracts (`globs: **/http/**`)
+
+**For AI assistants:** Read these rules to understand project standards, patterns, and priorities before making changes. Context-specific rules load automatically when editing relevant files.
 
 ## Current Implementation Status
 
@@ -110,5 +118,9 @@ This project uses Cursor rules (`.cursor/rules/*.mdc`) to guide AI-assisted deve
 - See `.cursor/rules/` for development standards and patterns
 - See `README.md` for setup and usage instructions
 - All code follows Go best practices and project-specific patterns defined in rules
+- Documentation organization:
+  - **Root docs:** Active reference guides (`about.md`, `observability.md`, summaries)
+  - **`docs/plans/`:** Historical design plan documents (preserved for context)
+  - **`docs/issues/`:** GitHub issue tracking documents (preserved for context)
 
 For installation, configuration, running, and testing instructions, see [README.md](README.md).
