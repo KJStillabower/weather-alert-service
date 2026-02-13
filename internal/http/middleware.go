@@ -106,6 +106,9 @@ func RateLimitMiddleware(limiter *rate.Limiter) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !limiter.Allow() {
+				if logger, ok := r.Context().Value("logger").(*zap.Logger); ok && logger != nil {
+					logger.Debug("rate limit denied")
+				}
 				overload.RecordDenial()
 				observability.RateLimitDeniedTotal.Inc()
 				writeRateLimitError(w, r)
