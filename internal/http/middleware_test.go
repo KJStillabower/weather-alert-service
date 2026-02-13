@@ -18,7 +18,10 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
+// TestMiddleware_ThroughHandler verifies that middleware chain processes requests
+// correctly and adds correlation ID header when none is provided.
 func TestMiddleware_ThroughHandler(t *testing.T) {
+	// Arrange: Set up handler with middleware chain
 	mockClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 12.0},
 	}
@@ -36,8 +39,10 @@ func TestMiddleware_ThroughHandler(t *testing.T) {
 	req := httptest.NewRequest("GET", "/weather/seattle", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute request through middleware chain
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correlation ID header present
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -46,7 +51,10 @@ func TestMiddleware_ThroughHandler(t *testing.T) {
 	}
 }
 
+// TestMiddleware_CorrelationIDPropagated verifies that CorrelationIDMiddleware preserves
+// client-provided correlation IDs in request and response headers.
 func TestMiddleware_CorrelationIDPropagated(t *testing.T) {
+	// Arrange: Set up handler with middleware and request containing correlation ID
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
@@ -63,14 +71,19 @@ func TestMiddleware_CorrelationIDPropagated(t *testing.T) {
 	req.Header.Set("X-Correlation-ID", "client-provided-id")
 	w := httptest.NewRecorder()
 
+	// Act: Execute request with client-provided correlation ID
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify correlation ID is preserved in response
 	if got := w.Header().Get("X-Correlation-ID"); got != "client-provided-id" {
 		t.Errorf("X-Correlation-ID = %q, want client-provided-id", got)
 	}
 }
 
+// TestMiddleware_MetricsRecordsNonOK verifies that MetricsMiddleware records
+// non-OK status codes when handlers return errors.
 func TestMiddleware_MetricsRecordsNonOK(t *testing.T) {
+	// Arrange: Set up handler that returns error and middleware chain
 	mockClient := &mockWeatherClient{
 		err: http.ErrHandlerTimeout,
 	}
@@ -89,14 +102,19 @@ func TestMiddleware_MetricsRecordsNonOK(t *testing.T) {
 	req = req.WithContext(context.Background())
 	w := httptest.NewRecorder()
 
+	// Act: Execute request that triggers error
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 503 status is returned
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }
 
+// TestMiddleware_HealthThroughChain verifies that health endpoint works correctly
+// when processed through the middleware chain.
 func TestMiddleware_HealthThroughChain(t *testing.T) {
+	// Arrange: Set up handler and middleware chain
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
@@ -112,14 +130,19 @@ func TestMiddleware_HealthThroughChain(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check through middleware
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
+// TestTimeoutMiddleware_CancelsContextAfterTimeout verifies that TimeoutMiddleware
+// cancels request context after timeout duration, causing upstream errors.
 func TestTimeoutMiddleware_CancelsContextAfterTimeout(t *testing.T) {
+	// Arrange: Set up slow client that blocks and timeout middleware with short duration
 	slowClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
@@ -141,14 +164,19 @@ func TestTimeoutMiddleware_CancelsContextAfterTimeout(t *testing.T) {
 	req := httptest.NewRequest("GET", "/weather/seattle", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute request that exceeds timeout
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 503 status due to timeout
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d (timeout should cause upstream error)", w.Code, http.StatusServiceUnavailable)
 	}
 }
 
+// TestRateLimitMiddleware_Returns429WhenExceeded verifies that RateLimitMiddleware
+// returns 429 Too Many Requests with RATE_LIMITED error code when rate limit is exceeded.
 func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
+	// Arrange: Set up handler with rate limiter (1 RPS, burst 2)
 	mockClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
@@ -166,11 +194,13 @@ func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
 	router.Use(RateLimitMiddleware(limiter))
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
 
+	// Act: Execute 3 requests (first 2 should pass, third should be rate limited)
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("GET", "/weather/seattle", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
+		// Assert: First 2 requests succeed, third returns 429
 		if i < 2 {
 			if w.Code != http.StatusOK {
 				t.Errorf("request %d: status = %d, want 200", i, w.Code)
@@ -196,7 +226,10 @@ func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
 	}
 }
 
+// TestRateLimitMiddleware_DebugLogs_Denied verifies that RateLimitMiddleware emits
+// DEBUG-level logs when requests are denied due to rate limiting.
 func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
+	// Arrange: Set up handler with rate limiter and logger observer
 	mockClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
@@ -215,6 +248,7 @@ func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
 	router.Use(RateLimitMiddleware(limiter))
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
 
+	// Act: Execute requests that exceed rate limit
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("GET", "/weather/seattle", nil)
 		w := httptest.NewRecorder()
@@ -224,13 +258,17 @@ func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
 		}
 	}
 
+	// Assert: Verify DEBUG log for rate limit denial
 	entries := logs.FilterMessage("rate limit denied").All()
 	if len(entries) < 1 {
 		t.Fatalf("want at least 1 rate limit denied log, got %d", len(entries))
 	}
 }
 
+// TestRateLimitMiddleware_NilLimiterPassesThrough verifies that RateLimitMiddleware
+// allows all requests when limiter is nil, enabling optional rate limiting.
 func TestRateLimitMiddleware_NilLimiterPassesThrough(t *testing.T) {
+	// Arrange: Set up handler with nil rate limiter
 	mockClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
@@ -248,14 +286,20 @@ func TestRateLimitMiddleware_NilLimiterPassesThrough(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/weather/seattle", nil)
 	w := httptest.NewRecorder()
+
+	// Act: Execute request with nil limiter
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status (nil limiter allows all requests)
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 (nil limiter should allow)", w.Code)
 	}
 }
 
+// TestMiddleware_GetRouteDefaultPath verifies that middleware correctly processes
+// routes without path templates, using default route path for metrics.
 func TestMiddleware_GetRouteDefaultPath(t *testing.T) {
+	// Arrange: Set up router with simple route and middleware
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(zap.NewNop()))
 	router.Use(MetricsMiddleware)
@@ -265,14 +309,20 @@ func TestMiddleware_GetRouteDefaultPath(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/foo", nil)
 	w := httptest.NewRecorder()
+
+	// Act: Execute request to route without path template
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
 }
 
+// TestMiddleware_MetricsRoute verifies that metrics endpoint works correctly
+// when processed through the middleware chain.
 func TestMiddleware_MetricsRoute(t *testing.T) {
+	// Arrange: Set up router with metrics endpoint and middleware
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(zap.NewNop()))
 	router.Use(MetricsMiddleware)
@@ -280,14 +330,20 @@ func TestMiddleware_MetricsRoute(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/metrics", nil)
 	w := httptest.NewRecorder()
+
+	// Act: Execute request to metrics endpoint
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
 }
 
+// TestSubrouter_WeatherRouteWithTimeoutAndRateLimit verifies that subrouter configuration
+// correctly applies timeout and rate limit middleware to weather routes.
 func TestSubrouter_WeatherRouteWithTimeoutAndRateLimit(t *testing.T) {
+	// Arrange: Set up handler with subrouter applying timeout and rate limit middleware
 	mockClient := &mockWeatherClient{
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
@@ -312,8 +368,11 @@ func TestSubrouter_WeatherRouteWithTimeoutAndRateLimit(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/weather/seattle", nil)
 	w := httptest.NewRecorder()
+
+	// Act: Execute request to weather route through subrouter
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status (subrouter routes correctly)
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 (subrouter should route /weather/{location})", w.Code)
 	}

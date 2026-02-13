@@ -7,6 +7,8 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/traffic"
 )
 
+// TestRequestCount_Empty verifies that RequestCount returns 0 when no
+// requests have been recorded within the time window.
 func TestRequestCount_Empty(t *testing.T) {
 	Reset()
 	if n := RequestCount(1 * time.Minute); n != 0 {
@@ -14,6 +16,8 @@ func TestRequestCount_Empty(t *testing.T) {
 	}
 }
 
+// TestRecordDenial_AndRequestCount verifies that traffic.RecordSuccess correctly
+// increments request count tracked by RequestCount.
 func TestRecordDenial_AndRequestCount(t *testing.T) {
 	Reset()
 	traffic.RecordSuccess()
@@ -23,6 +27,8 @@ func TestRecordDenial_AndRequestCount(t *testing.T) {
 	}
 }
 
+// TestRequestCount_ExpiresOutsideWindow verifies that RequestCount excludes
+// requests that occurred outside the specified time window.
 func TestRequestCount_ExpiresOutsideWindow(t *testing.T) {
 	Reset()
 	traffic.RecordSuccess()
@@ -31,6 +37,8 @@ func TestRequestCount_ExpiresOutsideWindow(t *testing.T) {
 	}
 }
 
+// TestReset verifies that Reset clears all recorded request counts,
+// resetting tracking to zero.
 func TestReset(t *testing.T) {
 	Reset()
 	traffic.RecordSuccess()
@@ -40,6 +48,8 @@ func TestReset(t *testing.T) {
 	}
 }
 
+// TestRecordDenial_AndCount verifies that RecordDenial correctly increments
+// denial count tracked by DenialCount.
 func TestRecordDenial_AndCount(t *testing.T) {
 	Reset()
 	RecordDenial()
@@ -49,6 +59,8 @@ func TestRecordDenial_AndCount(t *testing.T) {
 	}
 }
 
+// TestDenialCount_ExpiresOutsideWindow verifies that DenialCount excludes
+// denials that occurred outside the specified time window.
 func TestDenialCount_ExpiresOutsideWindow(t *testing.T) {
 	Reset()
 	RecordDenial()
@@ -57,6 +69,8 @@ func TestDenialCount_ExpiresOutsideWindow(t *testing.T) {
 	}
 }
 
+// TestReset_ClearsBoth verifies that Reset clears both request counts
+// and denial counts simultaneously.
 func TestReset_ClearsBoth(t *testing.T) {
 	Reset()
 	traffic.RecordSuccess()

@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// TestLoad_FailsWhenNoAPIKey verifies that Load returns an error when
+// WEATHER_API_KEY is not set and no secrets file provides the key.
 func TestLoad_FailsWhenNoAPIKey(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Unsetenv("WEATHER_API_KEY")
@@ -40,6 +42,8 @@ func TestLoad_FailsWhenNoAPIKey(t *testing.T) {
 	}
 }
 
+// TestLoad_SucceedsWithSecretsFile verifies that Load successfully loads
+// API key from secrets file when WEATHER_API_KEY environment variable is not set.
 func TestLoad_SucceedsWithSecretsFile(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Unsetenv("WEATHER_API_KEY")
@@ -70,6 +74,8 @@ func TestLoad_SucceedsWithSecretsFile(t *testing.T) {
 	}
 }
 
+// TestLoad_EnvFileNotFound verifies that Load returns an error when
+// the environment-specific config file does not exist.
 func TestLoad_EnvFileNotFound(t *testing.T) {
 	savedEnv := os.Getenv("ENV_NAME")
 	os.Setenv("ENV_NAME", "nonexistent")
@@ -93,6 +99,8 @@ func TestLoad_EnvFileNotFound(t *testing.T) {
 	}
 }
 
+// TestLoad_EmptyDurationFallsBackToDefault verifies that Load uses default
+// duration values when duration fields are empty strings in config.
 func TestLoad_EmptyDurationFallsBackToDefault(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key-1234567890")
@@ -138,6 +146,8 @@ shutdown:
 	}
 }
 
+// TestLoad_InvalidDurationFallsBackToDefault verifies that Load uses default
+// duration values when duration fields contain invalid duration strings.
 func TestLoad_InvalidDurationFallsBackToDefault(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key-1234567890")
@@ -186,6 +196,8 @@ shutdown:
 	}
 }
 
+// TestLoad_ValidationFailsWhenWeatherAPITimeoutZero verifies that Load
+// validation rejects zero timeout values for WeatherAPITimeout.
 func TestLoad_ValidationFailsWhenWeatherAPITimeoutZero(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key-1234567890")
@@ -234,6 +246,8 @@ shutdown:
 	}
 }
 
+// TestLoad_InvalidSecretsYAML verifies that Load returns an error when
+// secrets.yaml file contains invalid YAML syntax.
 func TestLoad_InvalidSecretsYAML(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Unsetenv("WEATHER_API_KEY")
@@ -262,6 +276,8 @@ func TestLoad_InvalidSecretsYAML(t *testing.T) {
 	}
 }
 
+// TestLoad_InvalidConfigYAML verifies that Load returns an error when
+// environment config file contains invalid YAML syntax.
 func TestLoad_InvalidConfigYAML(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key-1234567890")
@@ -296,6 +312,8 @@ func TestLoad_InvalidConfigYAML(t *testing.T) {
 	}
 }
 
+// TestLoad_SucceedsWithEnvVar verifies that Load successfully loads config
+// when WEATHER_API_KEY is provided via environment variable.
 func TestLoad_SucceedsWithEnvVar(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key-1234567890")
@@ -325,6 +343,8 @@ func TestLoad_SucceedsWithEnvVar(t *testing.T) {
 	}
 }
 
+// TestLoad_LifecycleOverloadConfig verifies that Load correctly parses
+// lifecycle configuration including overload, idle, and degraded settings.
 func TestLoad_LifecycleOverloadConfig(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key")
@@ -386,6 +406,8 @@ lifecycle:
 	}
 }
 
+// TestLoad_TestingModeDefaultsFalse verifies that TestingMode defaults to false
+// when not specified in configuration.
 func TestLoad_TestingModeDefaultsFalse(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key")
@@ -411,6 +433,8 @@ func TestLoad_TestingModeDefaultsFalse(t *testing.T) {
 	}
 }
 
+// TestLoad_TestingModeTrue verifies that Load correctly sets TestingMode to true
+// when explicitly configured in YAML.
 func TestLoad_TestingModeTrue(t *testing.T) {
 	savedKey := os.Getenv("WEATHER_API_KEY")
 	os.Setenv("WEATHER_API_KEY", "test-key")
@@ -479,7 +503,8 @@ func writeSecretsFile(t *testing.T, dir, content string) {
 	}
 }
 
-// TestCoverageGaps_IntentionallyUntested documents paths we reviewed but chose not to test.
+// TestCoverageGaps_IntentionallyUntested documents code paths that were reviewed
+// but intentionally left untested due to complexity or requiring OS-specific mocking.
 // Run with -v to see skip reasons. These gaps do not affect coverage targets.
 func TestCoverageGaps_IntentionallyUntested(t *testing.T) {
 	t.Run("loadAPIKeyFromSecrets_read_error", func(t *testing.T) {

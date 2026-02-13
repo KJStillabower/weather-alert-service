@@ -25,6 +25,8 @@ func isValidAPIKeyFormat(key string) error {
 	return nil
 }
 
+// TestOpenWeatherClient_ValidateAPIKey_Integration verifies that ValidateAPIKey
+// successfully validates API key against real OpenWeather API when WEATHER_API_KEY is set.
 func TestOpenWeatherClient_ValidateAPIKey_Integration(t *testing.T) {
 	apiKey := os.Getenv("WEATHER_API_KEY")
 	if apiKey == "" {
@@ -47,6 +49,8 @@ func TestOpenWeatherClient_ValidateAPIKey_Integration(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_Integration verifies that GetCurrentWeather
+// successfully fetches weather data from real OpenWeather API when WEATHER_API_KEY is set.
 func TestOpenWeatherClient_GetCurrentWeather_Integration(t *testing.T) {
 	apiKey := os.Getenv("WEATHER_API_KEY")
 	if apiKey == "" {

@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// TestRequestCount_Empty verifies that RequestCount returns 0 when no
+// requests have been recorded within the time window.
 func TestRequestCount_Empty(t *testing.T) {
 	Reset()
 	if n := RequestCount(1 * time.Minute); n != 0 {
@@ -12,6 +14,8 @@ func TestRequestCount_Empty(t *testing.T) {
 	}
 }
 
+// TestRecordRequest_AndCount verifies that RecordRequest correctly increments
+// request count tracked by RequestCount.
 func TestRecordRequest_AndCount(t *testing.T) {
 	Reset()
 	RecordRequest()
@@ -21,6 +25,8 @@ func TestRecordRequest_AndCount(t *testing.T) {
 	}
 }
 
+// TestRequestCount_ExpiresOutsideWindow verifies that RequestCount excludes
+// requests that occurred outside the specified time window.
 func TestRequestCount_ExpiresOutsideWindow(t *testing.T) {
 	Reset()
 	RecordRequest()
@@ -29,6 +35,8 @@ func TestRequestCount_ExpiresOutsideWindow(t *testing.T) {
 	}
 }
 
+// TestReset verifies that Reset clears all recorded request counts,
+// resetting tracking to zero.
 func TestReset(t *testing.T) {
 	Reset()
 	RecordRequest()

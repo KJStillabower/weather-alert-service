@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// TestRequestCount_Empty verifies that RequestCount returns 0 when no
+// requests have been recorded within the time window.
 func TestRequestCount_Empty(t *testing.T) {
 	Reset()
 	if n := RequestCount(1 * time.Minute); n != 0 {
@@ -12,6 +14,8 @@ func TestRequestCount_Empty(t *testing.T) {
 	}
 }
 
+// TestRecordSuccess_AndRequestCount verifies that RecordSuccess correctly
+// increments request count tracked by RequestCount.
 func TestRecordSuccess_AndRequestCount(t *testing.T) {
 	Reset()
 	RecordSuccess()
@@ -21,6 +25,8 @@ func TestRecordSuccess_AndRequestCount(t *testing.T) {
 	}
 }
 
+// TestRecordDenied_AndCounts verifies that RecordDenied increments both
+// DenialCount and RequestCount correctly.
 func TestRecordDenied_AndCounts(t *testing.T) {
 	Reset()
 	RecordDenied()
@@ -33,6 +39,8 @@ func TestRecordDenied_AndCounts(t *testing.T) {
 	}
 }
 
+// TestErrorRate_SuccessAndError verifies that ErrorRate correctly calculates
+// error rate from recorded success and error events.
 func TestErrorRate_SuccessAndError(t *testing.T) {
 	Reset()
 	RecordSuccess()
@@ -44,6 +52,8 @@ func TestErrorRate_SuccessAndError(t *testing.T) {
 	}
 }
 
+// TestErrorRate_DeniedExcluded verifies that ErrorRate excludes denied
+// requests from error rate calculation, only counting successful and error requests.
 func TestErrorRate_DeniedExcluded(t *testing.T) {
 	Reset()
 	RecordSuccess()
@@ -55,6 +65,8 @@ func TestErrorRate_DeniedExcluded(t *testing.T) {
 	}
 }
 
+// TestLoadAndError_UnifiedDenominator verifies that RecordSuccessN and RecordErrorN
+// correctly contribute to both RequestCount and ErrorRate with unified counting.
 func TestLoadAndError_UnifiedDenominator(t *testing.T) {
 	Reset()
 	RecordSuccessN(39)
@@ -68,6 +80,8 @@ func TestLoadAndError_UnifiedDenominator(t *testing.T) {
 	}
 }
 
+// TestReset verifies that Reset clears all recorded traffic metrics including
+// request counts, error rates, and denial counts.
 func TestReset(t *testing.T) {
 	Reset()
 	RecordSuccess()

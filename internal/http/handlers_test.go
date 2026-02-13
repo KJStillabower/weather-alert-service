@@ -69,7 +69,10 @@ func (m *mockCache) Set(ctx context.Context, key string, value models.WeatherDat
 	return nil
 }
 
+// TestHandler_GetWeather_Success verifies that GetWeather returns weather data
+// successfully with correct HTTP status and response schema when upstream fetch succeeds.
 func TestHandler_GetWeather_Success(t *testing.T) {
+	// Arrange: Set up mock client with weather data, empty cache, and handler
 	expectedWeather := models.WeatherData{
 		Location:    "seattle",
 		Temperature: 15.5,
@@ -95,8 +98,11 @@ func TestHandler_GetWeather_Success(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	// Act: Execute GET request
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correct response data
 	if w.Code != http.StatusOK {
 		t.Errorf("GetWeather() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -114,7 +120,10 @@ func TestHandler_GetWeather_Success(t *testing.T) {
 	}
 }
 
+// TestHandler_GetWeather_EmptyLocation verifies that GetWeather returns 400 Bad Request
+// with INVALID_LOCATION error code when location is empty or whitespace-only.
 func TestHandler_GetWeather_EmptyLocation(t *testing.T) {
+	// Arrange: Set up handler and request with whitespace-only location
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
@@ -122,7 +131,6 @@ func TestHandler_GetWeather_EmptyLocation(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
-	// Test with whitespace-only location (mux will match but handler validates)
 	req := httptest.NewRequest("GET", "/weather/%20%20%20", nil)
 	ctx := req.Context()
 	ctx = context.WithValue(ctx, "logger", logger)
@@ -132,8 +140,11 @@ func TestHandler_GetWeather_EmptyLocation(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	// Act: Execute GET request with invalid location
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 400 status and error response shape
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("GetWeather() status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
@@ -153,7 +164,10 @@ func TestHandler_GetWeather_EmptyLocation(t *testing.T) {
 	}
 }
 
+// TestHandler_GetWeather_ServiceError verifies that GetWeather maps service errors
+// to 503 Service Unavailable with UPSTREAM_UNAVAILABLE error code.
 func TestHandler_GetWeather_ServiceError(t *testing.T) {
+	// Arrange: Set up mock client that returns error and handler
 	mockClient := &mockWeatherClient{
 		err: errors.New("upstream unavailable"),
 	}
@@ -172,8 +186,11 @@ func TestHandler_GetWeather_ServiceError(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	// Act: Execute GET request when upstream fails
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 503 status and error response shape
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("GetWeather() status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
@@ -193,7 +210,10 @@ func TestHandler_GetWeather_ServiceError(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth verifies that GetHealth returns 200 OK with healthy status
+// and correct health check structure when all dependencies are operational.
 func TestHandler_GetHealth(t *testing.T) {
+	// Arrange: Set up handler with healthy dependencies
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
@@ -204,8 +224,10 @@ func TestHandler_GetHealth(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 200 status and health response schema
 	if w.Code != http.StatusOK {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -233,7 +255,10 @@ func TestHandler_GetHealth(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_InvalidAPIKey_DegradedWithLogger verifies that GetHealth returns
+// degraded status when API key validation fails, indicating upstream dependency failure.
 func TestHandler_GetHealth_InvalidAPIKey_DegradedWithLogger(t *testing.T) {
+	// Arrange: Set up mock client with invalid API key error
 	mockClient := &mockWeatherClient{
 		validateErr: errors.New("invalid API key: API key is invalid or not activated"),
 	}
@@ -250,8 +275,10 @@ func TestHandler_GetHealth_InvalidAPIKey_DegradedWithLogger(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check with invalid API key
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 503 status and degraded health with unhealthy API check
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
@@ -275,7 +302,10 @@ func TestHandler_GetHealth_InvalidAPIKey_DegradedWithLogger(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_ShuttingDown verifies that GetHealth returns shutting-down status
+// when the service is in shutdown state, indicating it should not receive new traffic.
 func TestHandler_GetHealth_ShuttingDown(t *testing.T) {
+	// Arrange: Set shutdown flag and handler
 	lifecycle.SetShuttingDown(true)
 	defer lifecycle.SetShuttingDown(false)
 
@@ -289,8 +319,10 @@ func TestHandler_GetHealth_ShuttingDown(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check during shutdown
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 503 status and shutting-down health status
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
@@ -305,9 +337,11 @@ func TestHandler_GetHealth_ShuttingDown(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_Overloaded verifies that GetHealth returns overloaded status
+// when request rate exceeds configured overload threshold.
 func TestHandler_GetHealth_Overloaded(t *testing.T) {
+	// Arrange: Reset state and configure overload threshold (threshold = 2 * 1 * 0.4 = 0.8, so 1+ requests overload)
 	overload.Reset()
-	// Threshold = 2 * 1 * 0.4 = 0.8, so 1+ requests overload
 	degraded.RecordSuccess()
 
 	healthConfig := &HealthConfig{
@@ -324,8 +358,10 @@ func TestHandler_GetHealth_Overloaded(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when overloaded
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 503 status and overloaded health status
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
@@ -340,9 +376,11 @@ func TestHandler_GetHealth_Overloaded(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_Idle verifies that GetHealth returns idle status when
+// service uptime exceeds minimum lifespan and request rate is below idle threshold.
 func TestHandler_GetHealth_Idle(t *testing.T) {
+	// Arrange: Reset idle state and configure with uptime > minimum_lifespan, no requests recorded
 	idle.Reset()
-	// No requests recorded; uptime > minimum_lifespan; request rate below threshold
 
 	healthConfig := &HealthConfig{
 		IdleWindow:             1 * time.Minute,
@@ -359,8 +397,10 @@ func TestHandler_GetHealth_Idle(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when idle conditions are met
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 200 status and idle health status
 	if w.Code != http.StatusOK {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -375,9 +415,11 @@ func TestHandler_GetHealth_Idle(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_HealthyNotIdle_RecentStart verifies that GetHealth returns healthy
+// (not idle) when service uptime is less than minimum lifespan, even if request rate is low.
 func TestHandler_GetHealth_HealthyNotIdle_RecentStart(t *testing.T) {
+	// Arrange: Reset idle state and configure with recent start (uptime < minimum_lifespan)
 	idle.Reset()
-	// StartTime is recent; uptime < minimum_lifespan -> should be healthy, not idle
 	healthConfig := &HealthConfig{
 		IdleWindow:             1 * time.Minute,
 		IdleThresholdReqPerMin:  5,
@@ -393,8 +435,10 @@ func TestHandler_GetHealth_HealthyNotIdle_RecentStart(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when uptime < minimum_lifespan
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 200 status and healthy (not idle) status
 	if w.Code != http.StatusOK {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -409,9 +453,11 @@ func TestHandler_GetHealth_HealthyNotIdle_RecentStart(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_HealthyNotIdle_AboveThreshold verifies that GetHealth returns healthy
+// (not idle) when request rate exceeds idle threshold, even if uptime > minimum_lifespan.
 func TestHandler_GetHealth_HealthyNotIdle_AboveThreshold(t *testing.T) {
+	// Arrange: Reset idle state and record requests exceeding threshold
 	idle.Reset()
-	// Record enough requests to exceed threshold; should be healthy, not idle
 	for i := 0; i < 10; i++ {
 		idle.RecordRequest()
 	}
@@ -430,8 +476,10 @@ func TestHandler_GetHealth_HealthyNotIdle_AboveThreshold(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when request rate exceeds idle threshold
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 200 status and healthy (not idle) status
 	if w.Code != http.StatusOK {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -446,15 +494,18 @@ func TestHandler_GetHealth_HealthyNotIdle_AboveThreshold(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_DegradedErrorRate verifies that GetHealth returns degraded status
+// when error rate exceeds configured degraded threshold.
 func TestHandler_GetHealth_DegradedErrorRate(t *testing.T) {
+	// Arrange: Reset degraded state and record errors exceeding threshold (2 errors, 1 success = 66% > 50%)
 	degraded.Reset()
 	degraded.RecordError()
 	degraded.RecordError()
-	degraded.RecordSuccess() // 2 errors, 1 success = 66% error rate
+	degraded.RecordSuccess()
 
 	healthConfig := &HealthConfig{
 		DegradedWindow:   1 * time.Minute,
-		DegradedErrorPct: 50, // 66% > 50%
+		DegradedErrorPct: 50,
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
@@ -465,8 +516,10 @@ func TestHandler_GetHealth_DegradedErrorRate(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when error rate exceeds threshold
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 503 status and degraded health status
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
@@ -481,15 +534,18 @@ func TestHandler_GetHealth_DegradedErrorRate(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_NotDegraded_BelowErrorThreshold verifies that GetHealth returns healthy
+// status when error rate is below degraded threshold.
 func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
+	// Arrange: Reset degraded state and record errors below threshold (1 error, 3 total = 33% < 50%)
 	degraded.Reset()
 	degraded.RecordSuccess()
 	degraded.RecordSuccess()
-	degraded.RecordError() // 1 error, 3 total = 33%
+	degraded.RecordError()
 
 	healthConfig := &HealthConfig{
 		DegradedWindow:   1 * time.Minute,
-		DegradedErrorPct: 50, // 33% < 50%
+		DegradedErrorPct: 50,
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
@@ -500,8 +556,10 @@ func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute health check when error rate is below threshold
 	handler.GetHealth(w, req)
 
+	// Assert: Verify 200 status and healthy health status
 	if w.Code != http.StatusOK {
 		t.Errorf("GetHealth() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -516,7 +574,10 @@ func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
 	}
 }
 
+// TestHandler_GetHealth_LogsTransition verifies that GetHealth logs health status transitions
+// only when status changes, not on every health check call.
 func TestHandler_GetHealth_LogsTransition(t *testing.T) {
+	// Arrange: Set up logger with observer and handler
 	degraded.Reset()
 	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
@@ -530,12 +591,14 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
-	// First call: healthy (no errors yet). Establishes prev.
+	// Act: First call - healthy (no errors yet). Establishes previous status.
 	degraded.RecordSuccess()
 	degraded.RecordSuccess()
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 	handler.GetHealth(w, req)
+
+	// Assert: First call should not log transition
 	if w.Code != http.StatusOK {
 		t.Fatalf("first GetHealth status = %d, want 200", w.Code)
 	}
@@ -543,13 +606,14 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 		t.Fatalf("first call should not log transition; got %d logs", logs.Len())
 	}
 
-	// Inject errors to breach threshold (66% > 50%).
+	// Act: Inject errors to breach threshold (66% > 50%) and call again
 	degraded.RecordError()
 	degraded.RecordError()
 
-	// Second call: degraded. Triggers transition log.
 	w2 := httptest.NewRecorder()
 	handler.GetHealth(w2, req)
+
+	// Assert: Second call should log transition from healthy to degraded
 	if w2.Code != http.StatusServiceUnavailable {
 		t.Fatalf("second GetHealth status = %d, want 503", w2.Code)
 	}
@@ -580,9 +644,11 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 		t.Errorf("reason = %q, want error_rate_breach", reason)
 	}
 
-	// Third call: still degraded. No new transition log.
+	// Act: Third call - still degraded
 	w3 := httptest.NewRecorder()
 	handler.GetHealth(w3, req)
+
+	// Assert: Third call should not log (status unchanged)
 	if w3.Code != http.StatusServiceUnavailable {
 		t.Fatalf("third GetHealth status = %d, want 503", w3.Code)
 	}
@@ -591,7 +657,10 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 	}
 }
 
+// TestHandler_GetWeather_DebugLogs_CacheHit verifies that GetWeather emits DEBUG-level logs
+// for cache hits and weather served events with correct metadata.
 func TestHandler_GetWeather_DebugLogs_CacheHit(t *testing.T) {
+	// Arrange: Set up cache with pre-populated data, logger with observer, and handler
 	expectedWeather := models.WeatherData{
 		Location:    "seattle",
 		Temperature: 15.0,
@@ -616,8 +685,11 @@ func TestHandler_GetWeather_DebugLogs_CacheHit(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	// Act: Execute GET request for cached location
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and DEBUG logs for cache hit and weather served
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
@@ -653,7 +725,10 @@ func TestHandler_GetWeather_DebugLogs_CacheHit(t *testing.T) {
 	}
 }
 
+// TestHandler_GetWeather_DebugLogs_CacheMiss verifies that GetWeather emits DEBUG-level logs
+// for cache misses and weather served events with cached=false metadata.
 func TestHandler_GetWeather_DebugLogs_CacheMiss(t *testing.T) {
+	// Arrange: Set up empty cache, logger with observer, and handler
 	expectedWeather := models.WeatherData{
 		Location:    "portland",
 		Temperature: 12.0,
@@ -678,8 +753,11 @@ func TestHandler_GetWeather_DebugLogs_CacheMiss(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	// Act: Execute GET request for uncached location
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and DEBUG logs for cache miss and weather served with cached=false
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
@@ -705,7 +783,10 @@ func TestHandler_GetWeather_DebugLogs_CacheMiss(t *testing.T) {
 	}
 }
 
+// TestHandler_GetTestStatus verifies that GetTestStatus returns test status information
+// including request counts, error counts, and configuration details.
 func TestHandler_GetTestStatus(t *testing.T) {
+	// Arrange: Reset state and set up handler with health config
 	overload.Reset()
 	degraded.Reset()
 
@@ -726,8 +807,10 @@ func TestHandler_GetTestStatus(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 
+	// Act: Execute GET request for test status
 	handler.GetTestStatus(w, req)
 
+	// Assert: Verify 200 status and response contains all required fields
 	if w.Code != http.StatusOK {
 		t.Errorf("GetTestStatus() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -754,7 +837,10 @@ func TestHandler_GetTestStatus(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestReset verifies that PostTestAction with "reset" action clears
+// all test state including overload and degraded tracking.
 func TestHandler_PostTestReset(t *testing.T) {
+	// Arrange: Set up state with recorded events and handler
 	degraded.Reset()
 	degraded.RecordSuccess()
 	degraded.RecordError()
@@ -771,8 +857,11 @@ func TestHandler_PostTestReset(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to reset test state
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status, correct response, and state cleared
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestReset() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -794,7 +883,10 @@ func TestHandler_PostTestReset(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestLoad verifies that PostTestAction with "load" action accepts
+// the specified number of requests and returns the accepted count.
 func TestHandler_PostTestLoad(t *testing.T) {
+	// Arrange: Reset state and set up handler
 	overload.Reset()
 	degraded.Reset()
 
@@ -811,8 +903,11 @@ func TestHandler_PostTestLoad(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to generate load
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correct accepted count
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestLoad() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -830,7 +925,10 @@ func TestHandler_PostTestLoad(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestError verifies that PostTestAction with "error" action records
+// the specified number of errors and returns the calculated error rate percentage.
 func TestHandler_PostTestError(t *testing.T) {
+	// Arrange: Reset degraded state with some successes and set up handler
 	degraded.Reset()
 	degraded.RecordSuccess()
 	degraded.RecordSuccess()
@@ -849,8 +947,11 @@ func TestHandler_PostTestError(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to inject errors
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correct error rate calculation
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestError() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -868,7 +969,10 @@ func TestHandler_PostTestError(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestShutdown verifies that PostTestAction with "shutdown" action
+// sets the service shutdown flag, triggering graceful shutdown behavior.
 func TestHandler_PostTestShutdown(t *testing.T) {
+	// Arrange: Reset shutdown flag and set up handler
 	lifecycle.SetShuttingDown(false)
 	defer lifecycle.SetShuttingDown(false)
 
@@ -883,8 +987,11 @@ func TestHandler_PostTestShutdown(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to trigger shutdown
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status, correct response, and shutdown flag set
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestShutdown() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -901,7 +1008,10 @@ func TestHandler_PostTestShutdown(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestPreventClear verifies that PostTestAction with "prevent_clear" action
+// disables automatic recovery clearing for degraded state testing.
 func TestHandler_PostTestPreventClear(t *testing.T) {
+	// Arrange: Clear recovery overrides and set up handler
 	degraded.ClearRecoveryOverrides()
 	defer degraded.ClearRecoveryOverrides()
 
@@ -916,8 +1026,11 @@ func TestHandler_PostTestPreventClear(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to prevent recovery clearing
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correct action response
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestPreventClear() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -931,7 +1044,10 @@ func TestHandler_PostTestPreventClear(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestFailClear verifies that PostTestAction with "fail_clear" action
+// simulates a failed recovery attempt and returns the next recovery time.
 func TestHandler_PostTestFailClear(t *testing.T) {
+	// Arrange: Clear recovery overrides, reset shutdown flag, and set up handler with retry config
 	degraded.ClearRecoveryOverrides()
 	defer degraded.ClearRecoveryOverrides()
 	lifecycle.SetShuttingDown(false)
@@ -953,8 +1069,11 @@ func TestHandler_PostTestFailClear(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to simulate failed recovery
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status, correct action, and next_recovery field present
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestFailClear() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -971,7 +1090,10 @@ func TestHandler_PostTestFailClear(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestClear verifies that PostTestAction with "clear" action
+// clears degraded state and re-enables recovery when recovery was disabled.
 func TestHandler_PostTestClear(t *testing.T) {
+	// Arrange: Reset degraded state with recovery disabled and set up handler
 	degraded.Reset()
 	degraded.SetRecoveryDisabled(true)
 
@@ -986,8 +1108,11 @@ func TestHandler_PostTestClear(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request to clear degraded state
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 200 status and correct action response
 	if w.Code != http.StatusOK {
 		t.Errorf("PostTestClear() status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -1001,7 +1126,10 @@ func TestHandler_PostTestClear(t *testing.T) {
 	}
 }
 
+// TestHandler_PostTestAction_Unknown verifies that PostTestAction returns 404 Not Found
+// when an unknown action is requested.
 func TestHandler_PostTestAction_Unknown(t *testing.T) {
+	// Arrange: Set up handler
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
@@ -1013,8 +1141,11 @@ func TestHandler_PostTestAction_Unknown(t *testing.T) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/test/{action}", handler.PostTestAction)
+
+	// Act: Execute POST request with unknown action
 	router.ServeHTTP(w, req)
 
+	// Assert: Verify 404 status for unknown action
 	if w.Code != http.StatusNotFound {
 		t.Errorf("PostTestAction(unknown) status = %d, want 404", w.Code)
 	}

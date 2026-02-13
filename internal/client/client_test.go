@@ -13,6 +13,8 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/models"
 )
 
+// TestNewOpenWeatherClient_InvalidAPIKey verifies that NewOpenWeatherClient validates
+// API key format and returns ErrInvalidAPIKey for empty or too-short keys.
 func TestNewOpenWeatherClient_InvalidAPIKey(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -61,7 +63,10 @@ func TestNewOpenWeatherClient_InvalidAPIKey(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_Success verifies that GetCurrentWeather
+// successfully fetches weather data, constructs correct API request, and maps response correctly.
 func TestOpenWeatherClient_GetCurrentWeather_Success(t *testing.T) {
+	// Arrange: Set up test server with expected API response
 	apiResp := map[string]interface{}{
 		"name": "Seattle",
 		"main": map[string]interface{}{
@@ -104,8 +109,11 @@ func TestOpenWeatherClient_GetCurrentWeather_Success(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClient() error = %v", err)
 	}
 
+	// Act: Fetch weather data
 	ctx := context.Background()
 	got, err := client.GetCurrentWeather(ctx, "seattle")
+
+	// Assert: Verify successful response and correct data mapping
 	if err != nil {
 		t.Fatalf("GetCurrentWeather() error = %v", err)
 	}
@@ -127,6 +135,8 @@ func TestOpenWeatherClient_GetCurrentWeather_Success(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_ErrorHandling verifies that GetCurrentWeather
+// correctly maps HTTP status codes to domain errors and identifies retryable vs non-retryable errors.
 func TestOpenWeatherClient_GetCurrentWeather_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -222,7 +232,10 @@ func TestOpenWeatherClient_GetCurrentWeather_ErrorHandling(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_RetryLogic verifies that GetCurrentWeather
+// retries on transient errors and succeeds after retries complete successfully.
 func TestOpenWeatherClient_GetCurrentWeather_RetryLogic(t *testing.T) {
+	// Arrange: Set up server that fails twice then succeeds
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -259,8 +272,11 @@ func TestOpenWeatherClient_GetCurrentWeather_RetryLogic(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClientWithRetry() error = %v", err)
 	}
 
+	// Act: Fetch weather data with retries enabled
 	ctx := context.Background()
 	got, err := client.GetCurrentWeather(ctx, "seattle")
+
+	// Assert: Verify retries occurred and request eventually succeeded
 	if err != nil {
 		t.Fatalf("GetCurrentWeather() error = %v", err)
 	}
@@ -273,7 +289,10 @@ func TestOpenWeatherClient_GetCurrentWeather_RetryLogic(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_NoRetryOnNonRetryableError verifies that
+// GetCurrentWeather does not retry on non-retryable errors like 401 Unauthorized.
 func TestOpenWeatherClient_GetCurrentWeather_NoRetryOnNonRetryableError(t *testing.T) {
+	// Arrange: Set up server that returns non-retryable error
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -286,8 +305,11 @@ func TestOpenWeatherClient_GetCurrentWeather_NoRetryOnNonRetryableError(t *testi
 		t.Fatalf("NewOpenWeatherClientWithRetry() error = %v", err)
 	}
 
+	// Act: Fetch weather data with non-retryable error
 	ctx := context.Background()
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify error returned and no retries occurred
 	if err == nil {
 		t.Fatalf("GetCurrentWeather() expected error, got nil")
 	}
@@ -300,7 +322,10 @@ func TestOpenWeatherClient_GetCurrentWeather_NoRetryOnNonRetryableError(t *testi
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_ContextCancellation verifies that
+// GetCurrentWeather respects context cancellation and returns context.Canceled error.
 func TestOpenWeatherClient_GetCurrentWeather_ContextCancellation(t *testing.T) {
+	// Arrange: Set up server and client with cancelled context
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -315,7 +340,10 @@ func TestOpenWeatherClient_GetCurrentWeather_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
+	// Act: Fetch weather data with cancelled context
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify context.Canceled error
 	if err == nil {
 		t.Fatalf("GetCurrentWeather() expected error, got nil")
 	}
@@ -324,7 +352,10 @@ func TestOpenWeatherClient_GetCurrentWeather_ContextCancellation(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_CorrelationID verifies that GetCurrentWeather
+// propagates correlation ID from context to upstream API request headers.
 func TestOpenWeatherClient_GetCurrentWeather_CorrelationID(t *testing.T) {
+	// Arrange: Set up server that captures correlation ID header
 	var capturedCorrID string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedCorrID = r.Header.Get("X-Correlation-ID")
@@ -357,8 +388,11 @@ func TestOpenWeatherClient_GetCurrentWeather_CorrelationID(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClient() error = %v", err)
 	}
 
+	// Act: Fetch weather data with correlation ID in context
 	ctx := context.WithValue(context.Background(), "correlation_id", "test-correlation-id-123")
 	_, err = client.GetCurrentWeather(ctx, "seattle")
+
+	// Assert: Verify correlation ID propagated to upstream request
 	if err != nil {
 		t.Fatalf("GetCurrentWeather() error = %v", err)
 	}
@@ -368,6 +402,8 @@ func TestOpenWeatherClient_GetCurrentWeather_CorrelationID(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_mapResponse verifies that mapResponse correctly transforms
+// OpenWeather API response format to WeatherData model, handling edge cases like empty descriptions.
 func TestOpenWeatherClient_mapResponse(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -506,6 +542,8 @@ func TestOpenWeatherClient_mapResponse(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_calculateBackoff verifies that calculateBackoff implements
+// exponential backoff with jitter, respecting max delay cap.
 func TestOpenWeatherClient_calculateBackoff(t *testing.T) {
 	client := &OpenWeatherClient{
 		retryBaseDelay: 100 * time.Millisecond,
@@ -552,7 +590,10 @@ func TestOpenWeatherClient_calculateBackoff(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries verifies that GetCurrentWeather
+// returns ErrUpstreamFailure with "exhausted retries" message when all retry attempts fail.
 func TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries(t *testing.T) {
+	// Arrange: Set up server that always returns error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -563,8 +604,11 @@ func TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClientWithRetry() error = %v", err)
 	}
 
+	// Act: Fetch weather data that will exhaust retries
 	ctx := context.Background()
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify exhausted retries error
 	if err == nil {
 		t.Fatalf("GetCurrentWeather() expected error, got nil")
 	}
@@ -577,7 +621,10 @@ func TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_InvalidJSON verifies that GetCurrentWeather
+// returns an error when upstream returns invalid JSON response.
 func TestOpenWeatherClient_GetCurrentWeather_InvalidJSON(t *testing.T) {
+	// Arrange: Set up server that returns invalid JSON
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -590,8 +637,11 @@ func TestOpenWeatherClient_GetCurrentWeather_InvalidJSON(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClient() error = %v", err)
 	}
 
+	// Act: Fetch weather data with invalid JSON response
 	ctx := context.Background()
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify parse error returned
 	if err == nil {
 		t.Fatalf("GetCurrentWeather() expected error, got nil")
 	}
@@ -601,7 +651,10 @@ func TestOpenWeatherClient_GetCurrentWeather_InvalidJSON(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_Timeout verifies that GetCurrentWeather
+// returns a timeout error when request exceeds configured timeout duration.
 func TestOpenWeatherClient_GetCurrentWeather_Timeout(t *testing.T) {
+	// Arrange: Set up slow server and client with short timeout
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(3 * time.Second)
 		w.WriteHeader(http.StatusOK)
@@ -613,8 +666,11 @@ func TestOpenWeatherClient_GetCurrentWeather_Timeout(t *testing.T) {
 		t.Fatalf("NewOpenWeatherClient() error = %v", err)
 	}
 
+	// Act: Fetch weather data that exceeds timeout
 	ctx := context.Background()
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify timeout error returned
 	if err == nil {
 		t.Fatalf("GetCurrentWeather() expected error, got nil")
 	}
@@ -624,6 +680,8 @@ func TestOpenWeatherClient_GetCurrentWeather_Timeout(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_ValidateAPIKey verifies that ValidateAPIKey correctly validates
+// API key by checking upstream response status codes.
 func TestOpenWeatherClient_ValidateAPIKey(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -677,14 +735,20 @@ func TestOpenWeatherClient_ValidateAPIKey(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_GetCurrentWeather_InvalidURL verifies that GetCurrentWeather
+// returns an error when API URL is invalid or malformed.
 func TestOpenWeatherClient_GetCurrentWeather_InvalidURL(t *testing.T) {
+	// Arrange: Create client with invalid URL
 	client, err := NewOpenWeatherClient("test-api-key-12345", "://invalid", 2*time.Second)
 	if err != nil {
 		t.Fatalf("NewOpenWeatherClient() error = %v", err)
 	}
 
+	// Act: Fetch weather data with invalid URL
 	ctx := context.Background()
 	_, err = client.GetCurrentWeather(ctx, "test")
+
+	// Assert: Verify error for invalid URL
 	if err == nil {
 		t.Fatal("GetCurrentWeather() expected error for invalid URL, got nil")
 	}
@@ -693,6 +757,8 @@ func TestOpenWeatherClient_GetCurrentWeather_InvalidURL(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_handleErrorResponse_503_504 verifies that handleErrorResponse
+// correctly maps 503 and 504 status codes to ErrUpstreamFailure.
 func TestOpenWeatherClient_handleErrorResponse_503_504(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -727,6 +793,8 @@ func TestOpenWeatherClient_handleErrorResponse_503_504(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_isRetryable_TimeoutErrors verifies that isRetryable correctly
+// identifies timeout and context cancellation errors as retryable.
 func TestOpenWeatherClient_isRetryable_TimeoutErrors(t *testing.T) {
 	client := &OpenWeatherClient{}
 	tests := []struct {
@@ -750,7 +818,8 @@ func TestOpenWeatherClient_isRetryable_TimeoutErrors(t *testing.T) {
 	}
 }
 
-// TestCoverageGaps_IntentionallyUntested documents paths we reviewed but chose not to test.
+// TestCoverageGaps_IntentionallyUntested documents code paths that were reviewed
+// but intentionally left untested due to complexity or integration test coverage.
 // Run with -v to see skip reasons.
 func TestCoverageGaps_IntentionallyUntested(t *testing.T) {
 	t.Run("callAPI_clientDo_non_timeout_error", func(t *testing.T) {
