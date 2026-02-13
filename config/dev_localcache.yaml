@@ -26,8 +26,8 @@ reliability:
   retry_max_attempts: 3
   retry_base_delay: "200ms"
   retry_max_delay: "5s"
-  rate_limit_rps: 2
-  rate_limit_burst: 5
+  rate_limit_rps: 5
+  rate_limit_burst: 20
 
 shutdown:
   timeout: "30s"

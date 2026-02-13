@@ -28,6 +28,7 @@ type HealthConfig struct {
 	OverloadWindow         time.Duration
 	OverloadThresholdPct   int
 	RateLimitRPS           int
+	RateLimitBurst         int // 0 when rate limiter disabled
 	DegradedWindow         time.Duration
 	DegradedErrorPct       int
 	DegradedRetryInitial   time.Duration
@@ -204,12 +205,29 @@ func (h *Handler) GetTestStatus(w http.ResponseWriter, r *http.Request) {
 		window = h.healthConfig.DegradedWindow
 	}
 	errors, _ := degraded.ErrorRate(window)
+
+	cfg := make(map[string]interface{})
+	if h.healthConfig != nil {
+		overloadThreshold := 0
+		if h.healthConfig.RateLimitRPS > 0 {
+			overloadThreshold = int(float64(h.healthConfig.RateLimitRPS) *
+				h.healthConfig.OverloadWindow.Seconds() *
+				float64(h.healthConfig.OverloadThresholdPct) / 100)
+		}
+		cfg["rate_limit_rps"] = h.healthConfig.RateLimitRPS
+		cfg["rate_limit_burst"] = h.healthConfig.RateLimitBurst
+		cfg["overload_threshold"] = overloadThreshold
+		cfg["overload_window_seconds"] = h.healthConfig.OverloadWindow.Seconds()
+		cfg["degraded_error_pct"] = h.healthConfig.DegradedErrorPct
+	}
+
 	resp := map[string]interface{}{
 		"total_requests_in_window":  overload.RequestCount(window),
 		"denied_requests_in_window": overload.DenialCount(window),
 		"errors_in_window":          errors,
 		"window_length":             window.String(),
 		"auto_clear":                !degraded.IsRecoveryDisabled(),
+		"config":                    cfg,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
