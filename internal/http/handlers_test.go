@@ -18,6 +18,7 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/models"
 	"github.com/kjstillabower/weather-alert-service/internal/service"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
 
@@ -587,6 +588,120 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 	}
 	if logs.Len() != 1 {
 		t.Errorf("third call (status unchanged) should not log; total logs = %d, want 1", logs.Len())
+	}
+}
+
+func TestHandler_GetWeather_DebugLogs_CacheHit(t *testing.T) {
+	expectedWeather := models.WeatherData{
+		Location:    "seattle",
+		Temperature: 15.0,
+		Conditions:  "clear",
+		Humidity:    50,
+		WindSpeed:   3.0,
+		Timestamp:   time.Now(),
+	}
+	mockClient := &mockWeatherClient{weather: expectedWeather}
+	mockCache := &mockCache{data: map[string]models.WeatherData{"seattle": expectedWeather}}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+
+	core, logs := observer.New(zap.DebugLevel)
+	logger := zap.New(core)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("GET", "/weather/seattle", nil)
+	ctx := context.WithValue(req.Context(), "logger", logger)
+	ctx = context.WithValue(ctx, "correlation_id", "test-id")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/weather/{location}", handler.GetWeather)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	hitEntries := logs.FilterMessage("cache hit").All()
+	if len(hitEntries) != 1 {
+		t.Fatalf("want 1 cache hit log, got %d", len(hitEntries))
+	}
+	var loc string
+	for _, f := range hitEntries[0].Context {
+		if f.Key == "location" {
+			loc = f.String
+			break
+		}
+	}
+	if loc != "seattle" {
+		t.Errorf("cache hit location = %q, want seattle", loc)
+	}
+
+	servedEntries := logs.FilterMessage("weather served").All()
+	if len(servedEntries) != 1 {
+		t.Fatalf("want 1 weather served log, got %d", len(servedEntries))
+	}
+	var cached bool
+	for _, f := range servedEntries[0].Context {
+		if f.Key == "cached" && f.Type == zapcore.BoolType {
+			cached = f.Integer == 1
+			break
+		}
+	}
+	if !cached {
+		t.Error("weather served should have cached=true for cache hit")
+	}
+}
+
+func TestHandler_GetWeather_DebugLogs_CacheMiss(t *testing.T) {
+	expectedWeather := models.WeatherData{
+		Location:    "portland",
+		Temperature: 12.0,
+		Conditions:  "cloudy",
+		Humidity:    70,
+		WindSpeed:   4.0,
+		Timestamp:   time.Now(),
+	}
+	mockClient := &mockWeatherClient{weather: expectedWeather}
+	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+
+	core, logs := observer.New(zap.DebugLevel)
+	logger := zap.New(core)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	req := httptest.NewRequest("GET", "/weather/portland", nil)
+	ctx := context.WithValue(req.Context(), "logger", logger)
+	ctx = context.WithValue(ctx, "correlation_id", "test-id")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/weather/{location}", handler.GetWeather)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	missEntries := logs.FilterMessage("cache miss, fetching upstream").All()
+	if len(missEntries) != 1 {
+		t.Fatalf("want 1 cache miss log, got %d", len(missEntries))
+	}
+
+	servedEntries := logs.FilterMessage("weather served").All()
+	if len(servedEntries) != 1 {
+		t.Fatalf("want 1 weather served log, got %d", len(servedEntries))
+	}
+	var cached bool
+	for _, f := range servedEntries[0].Context {
+		if f.Key == "cached" && f.Type == zapcore.BoolType {
+			cached = f.Integer == 1
+			break
+		}
+	}
+	if cached {
+		t.Error("weather served should have cached=false for cache miss")
 	}
 }
 

@@ -48,13 +48,13 @@ Do not add tests solely to raise coverage. Add tests when a failure would cause 
 | internal/client | 93.5% | Strong |
 | internal/config | 87.3% | Strong |
 | internal/degraded | 89.9% | Core + recovery paths |
-| internal/http | 90.2% | Handlers including /test |
+| internal/http | 91.2% | Handlers including /test, DEBUG logs, health transition |
 | internal/idle | 96.2% | High |
 | internal/lifecycle | 100.0% | Fully covered |
 | internal/models | N/A | No test files |
 | internal/observability | 90.9% | Strong |
 | internal/overload | 100.0% | Fully covered |
-| internal/service | 100.0% | Fully covered |
+| internal/service | 75.0% | Cache hit/miss, upstream; DEBUG logging exercised via handler tests |
 | internal/traffic | 98.4% | High |
 
 ## What We Test
@@ -108,10 +108,11 @@ Do not add tests solely to raise coverage. Add tests when a failure would cause 
 ### internal/http
 
 - **Handlers:** GetWeather (success, empty location, service error)
-- **Health:** healthy, degraded (invalid API key), shutting-down, overloaded, idle, not-idle (recent start, above threshold), degraded error rate, below error threshold
+- **Health:** healthy, degraded (invalid API key), shutting-down, overloaded, idle, not-idle (recent start, above threshold), degraded error rate, below error threshold, health status transition logging
 - **Test endpoints:** GetTestStatus, PostTestReset, PostTestLoad, PostTestError, PostTestShutdown, PostTestPreventClear, PostTestFailClear, PostTestClear
 - PostTestAction unknown action returns 404
-- **Middleware:** Correlation ID, metrics (OK and non-OK), timeout, rate limit 429, nil limiter passthrough, route detection, subrouter chain
+- **Middleware:** Correlation ID, metrics (OK and non-OK), timeout, rate limit 429, nil limiter passthrough, route detection, subrouter chain, rate limit denied DEBUG log
+- **DEBUG logs (weather path):** cache hit, cache miss, weather served (cached=true/false), rate limit denied
 
 ### internal/idle
 
@@ -143,6 +144,7 @@ Do not add tests solely to raise coverage. Add tests when a failure would cause 
 - GetWeather cache miss then upstream success
 - GetWeather upstream failure
 - GetWeather cache Get error (fallback)
+- DEBUG logging (cache hit, cache miss, weather served) when logger in context; exercised via handler tests
 
 ### internal/traffic
 
