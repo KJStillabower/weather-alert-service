@@ -78,6 +78,13 @@ var (
 	// CircuitBreakerTransitionsTotal counts state transitions per component, from, to.
 	CircuitBreakerTransitionsTotal *prometheus.CounterVec
 
+	// CacheWarmingTotal counts cache warming operations.
+	CacheWarmingTotal prometheus.Counter
+	// CacheWarmingErrorsTotal counts cache warming failures.
+	CacheWarmingErrorsTotal prometheus.Counter
+	// CacheWarmingDurationSeconds tracks cache warming operation duration.
+	CacheWarmingDurationSeconds prometheus.Histogram
+
 	// trackedLocations is built from config; used to resolve location for metrics.
 	trackedLocationsMu sync.RWMutex
 	trackedLocations   map[string]struct{}
@@ -248,6 +255,25 @@ func init() {
 		},
 		[]string{"component", "from", "to"},
 	)
+	CacheWarmingTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cacheWarmingTotal",
+			Help: "Total number of cache warming operations",
+		},
+	)
+	CacheWarmingErrorsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cacheWarmingErrorsTotal",
+			Help: "Total number of cache warming errors",
+		},
+	)
+	CacheWarmingDurationSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cacheWarmingDurationSeconds",
+			Help:    "Duration of cache warming operations in seconds",
+			Buckets: []float64{1, 5, 10, 30, 60},
+		},
+	)
 
 	registry.MustRegister(
 		HTTPRequestsTotal, HTTPRequestDuration, HTTPRequestsInFlight,
@@ -262,6 +288,7 @@ func init() {
 		CacheErrorsTotal, CacheOperationDurationSeconds,
 		RequestTimeoutPropagatedTotal,
 		CircuitBreakerState, CircuitBreakerTransitionsTotal,
+		CacheWarmingTotal, CacheWarmingErrorsTotal, CacheWarmingDurationSeconds,
 	)
 }
 

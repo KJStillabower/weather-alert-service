@@ -110,6 +110,22 @@ func main() {
 		observability.SetTrackedLocations(cfg.TrackedLocations)
 	}
 
+	if cfg.WarmCache && len(cfg.TrackedLocations) > 0 {
+		warmer := cache.NewCacheWarmer(weatherService, logger)
+		warmCtx, warmCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := warmer.Warm(warmCtx, cfg.TrackedLocations); err != nil {
+			logger.Warn("cache warming failed", zap.Error(err))
+		}
+		warmCancel()
+		if cfg.WarmInterval > 0 {
+			go func() {
+				if err := warmer.WarmPeriodic(context.Background(), cfg.TrackedLocations, cfg.WarmInterval); err != nil && err != context.Canceled {
+					logger.Error("periodic cache warming stopped", zap.Error(err))
+				}
+			}()
+		}
+	}
+
 	router := mux.NewRouter()
 	router.Use(httphandler.CorrelationIDMiddleware(logger))
 	router.Use(httphandler.MetricsMiddleware)

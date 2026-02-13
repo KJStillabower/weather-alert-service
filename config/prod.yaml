@@ -16,6 +16,8 @@ request:
 cache:
   backend: "memcached"
   ttl: "5m"
+  warm_cache: true
+  warm_interval: 60m
   memcached:
     addrs: "localhost:11211"
     timeout: "500ms"

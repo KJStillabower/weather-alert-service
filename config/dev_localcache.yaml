@@ -16,6 +16,8 @@ cache:
   # in_memory | memcached; use memcached for shared cache across instances
   backend: "in_memory"
   ttl: "5m"
+  warm_cache: false
+  warm_interval: 0
   # Used when backend=memcached; env override: MEMCACHED_ADDRS
   memcached:
     addrs: "localhost:11211"

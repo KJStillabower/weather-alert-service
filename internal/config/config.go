@@ -51,6 +51,9 @@ type Config struct {
 
 	TrackedLocations []string
 
+	WarmCache    bool
+	WarmInterval time.Duration
+
 	CircuitBreakerEnabled     bool
 	CircuitBreakerFailureThreshold int
 	CircuitBreakerSuccessThreshold int
@@ -74,8 +77,10 @@ type fileConfig struct {
 	} `yaml:"request"`
 
 	Cache struct {
-		Backend string `yaml:"backend"`
-		TTL     string `yaml:"ttl"`
+		Backend      string `yaml:"backend"`
+		TTL          string `yaml:"ttl"`
+		WarmCache    *bool  `yaml:"warm_cache"`
+		WarmInterval string `yaml:"warm_interval"`
 		Memcached struct {
 			Addrs        string `yaml:"addrs"`
 			Timeout      string `yaml:"timeout"`
@@ -263,6 +268,23 @@ func Load() (*Config, error) {
 	cfg.DegradedRetryInitial = parseDuration(fc.Lifecycle.DegradedRetryInitial, 1*time.Minute)
 	cfg.DegradedRetryMax = parseDuration(fc.Lifecycle.DegradedRetryMax, 20*time.Minute)
 	cfg.TrackedLocations = fc.Metrics.TrackedLocations
+
+	cfg.WarmCache = false
+	if fc.Cache.WarmCache != nil {
+		cfg.WarmCache = *fc.Cache.WarmCache
+	}
+	if v := strings.TrimSpace(strings.ToLower(os.Getenv("WARM_CACHE"))); v == "true" || v == "1" {
+		cfg.WarmCache = true
+	} else if v == "false" || v == "0" {
+		cfg.WarmCache = false
+	}
+	cfg.WarmInterval = parseDurationOrZero(fc.Cache.WarmInterval, 0)
+	if s := strings.TrimSpace(os.Getenv("CACHE_WARM_INTERVAL")); s != "" {
+		cfg.WarmInterval = parseDurationOrZero(s, 0)
+	}
+	if cfg.WarmInterval < 0 {
+		cfg.WarmInterval = 0
+	}
 
 	cfg.CircuitBreakerEnabled = fc.CircuitBreaker.Enabled
 	cfg.CircuitBreakerFailureThreshold = fc.CircuitBreaker.FailureThreshold
