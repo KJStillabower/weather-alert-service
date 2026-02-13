@@ -1,8 +1,6 @@
 ---
 description: Observability patterns for Prometheus metrics, structured logging, and correlation IDs
-alwaysApply: true
-version: 1.1.1
-lastUpdated: 2026-02-11
+globs: **/observability/**
 ---
 
 # Observability Rules
@@ -83,7 +81,7 @@ weatherAPIDuration = promauto.NewHistogramVec(
 - **State changes**: Service startup, shutdown, configuration reloads
 
 **What NOT to log:**
-- Sensitive values, security keys etc @090-security.mdc
+- Sensitive values, security keys etc @020-security.mdc
 - Routine successful requests (metrics cover this)
 - Every cache hit (metrics cover this)
 - Speculative debugging details
@@ -205,7 +203,7 @@ logger.Info(fmt.Sprintf("Weather fetched for %s: %.1f°C in %v", location, temp,
 
 ### Never Log Sensitive Data
 
-**See 090-security.mdc for details. Summary:**
+**See 020-security.mdc for details. Summary:**
 - Never log API keys, credentials, or secrets
 - Log that credentials are present, not their values
 - Mask sensitive data in error messages
@@ -314,7 +312,7 @@ Before considering observability complete, verify:
 - [ ] Error rates tracked by type
 - [ ] Correlation IDs in all logs
 - [ ] Structured logging throughout
-- [ ] No sensitive data in logs (090-security.mdc)
+- [ ] No sensitive data in logs (020-security.mdc)
 - [ ] `/metrics` endpoint exposed
 - [ ] All metrics have inline comments explaining what to watch for
 - [ ] Sample prometheus.yaml and alertmanager.yaml included

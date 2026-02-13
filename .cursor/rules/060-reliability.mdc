@@ -1,8 +1,6 @@
 ---
 description: Reliability patterns for retries, timeouts, rate limits, graceful degradation, and shutdown
 alwaysApply: true
-version: 1.1.0
-lastUpdated: 2026-02-11
 ---
 
 # Reliability Rules
@@ -159,27 +157,6 @@ Externalize and document reliability controls:
 - `RATE_LIMIT_BURST`
 - `CACHE_TTL`
 - `SHUTDOWN_TIMEOUT`
-
-## Testing Requirements
-
-Per `040-testing.mdc`, minimum reliability tests:
-- timeout propagation and cancellation
-- retry on transient errors only
-- no retry on non-retryable errors
-- rate limiting returns `429`
-- cache fallback behavior
-- graceful shutdown drains in-flight requests
-
-## Observability Tie-in
-
-Per `050-observability.mdc`, emit actionable signals:
-- request latency and error-rate trends
-- retry counts and exhaustion
-- rate-limit denials
-- dependency timeout/failure rates
-- degraded-mode entry/exit events
-
-Log decisions, boundaries, and failures only.
 
 ## Avoid
 

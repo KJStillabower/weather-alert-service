@@ -1,8 +1,6 @@
 ---
 description: Testing standards, patterns, and requirements for unit and integration tests
-alwaysApply: true
-version: 1.0.0
-lastUpdated: 2026-02-11
+globs: **/*_test.go
 ---
 
 # Testing Rules
@@ -11,6 +9,7 @@ lastUpdated: 2026-02-11
 
 Tests verify correctness, document behavior, and prevent regressions. Write tests that are readable, maintainable, and fast.
 Tests should provide value.  Refactoring service code for higher synthetic coverage is not the objective.
+
 
 ## Test Organization
 
@@ -26,17 +25,21 @@ Tests should provide value.  Refactoring service code for higher synthetic cover
 
 **Use arrange-act-assert pattern:**
 
+- Document your tests at the code level
+
 ```go
+// TestWeatherService_GetWeather_CacheHit verifies that GetWeather returns cached data
+// when a cache entry exists for the requested location, avoiding an upstream API call.
 func TestWeatherService_GetWeather_CacheHit(t *testing.T) {
-    // Arrange
+    // Arrange: Set up a cache with pre-populated weather data for "seattle"
     cached := models.WeatherData{Location: "seattle"}
     mockCache := &mockCache{data: map[string]models.WeatherData{"seattle": cached}}
     svc := NewWeatherService(nil, mockCache, 5*time.Minute)
 
-    // Act
+    // Act: Request weather for a location that exists in cache
     got, err := svc.GetWeather(context.Background(), "seattle")
 
-    // Assert
+    // Assert: Verify cache hit returns data without error
     if err != nil {
         t.Fatalf("GetWeather() error = %v, want nil", err)
     }
@@ -152,7 +155,7 @@ func TestHandler_GetWeather_Success(t *testing.T) {
 
 ## Reliability Testing
 
-**Per `060-reliability.mdc`, test reliability patterns:**
+**Reliability testing (see `060-reliability.mdc` for patterns):**
 
 **Required tests:**
 - Timeout propagation and context cancellation
@@ -180,7 +183,7 @@ func TestClient_GetCurrentWeather_Timeout(t *testing.T) {
 
 ## API Contract Testing
 
-**Per `070-api-contract.mdc`, validate contract compliance:**
+**API contract testing (see `070-api-contract.mdc` for contract details):**
 
 **Required tests:**
 - `GET /weather/{location}` success response schema matches contract
@@ -258,6 +261,7 @@ func setupRequestContext(req *http.Request, logger *zap.Logger) *http.Request {
 - Test boundary conditions (empty strings, nil values, timeouts)
 - Test error propagation and mapping
 - Don't chase 100% coverage; prioritize important behavior
+- Document your exceptions
 
 ## Running Tests
 

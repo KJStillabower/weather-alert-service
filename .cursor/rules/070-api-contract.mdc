@@ -1,8 +1,6 @@
 ---
 description: API contract standards for endpoints, response schema, errors, and HTTP semantics
-alwaysApply: true
-version: 1.1.0
-lastUpdated: 2026-02-11
+globs: **/http/**
 ---
 
 # API Contract Rules
@@ -147,15 +145,6 @@ Document in `README.md`:
 - response schemas
 - error codes and meanings
 - sample curl commands
-
-## Testing Requirements
-
-Per `040-testing.mdc`, minimum API contract tests:
-- `GET /weather/{location}` success schema validation
-- invalid location returns `400` with error shape
-- upstream failure maps to `503` with stable error code
-- `GET /health` status and schema validation
-- `GET /metrics` serves Prometheus format
 
 ## Avoid
 

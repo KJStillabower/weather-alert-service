@@ -1,0 +1,54 @@
+---
+description: Preserve existing working code; verify before overwrite; prefer incremental changes
+alwaysApply: true
+---
+
+# Preserve Existing Work
+
+## Core Principle
+
+**Do not overwrite or replace without first understanding what exists.** Existing files may contain working code, prior decisions, or structure that the agent cannot see. Assume the user has invested effort; preserve it unless change is explicitly requested.
+
+## Before Creating or Replacing Files
+
+**Always:** Check if file exists (`Read`, `Glob`, `Grep`), read existing content fully, understand current behavior (what it does, how wired, what config). Do not replace working patterns without explicit request.
+
+## When Adding or Fixing Something
+
+**Do:**
+- Read related files; integrate with existing patterns; make minimal, targeted changes
+- Identify the specific failing path; ask questions if unsure; change only what's necessary
+- Verify code is actually missing; check if similar logic exists elsewhere; match existing style
+- Follow existing wiring patterns (e.g. config loading, env vars)
+
+**Don't:**
+- Rewrite entire modules; introduce a new pattern that conflicts with existing code
+- Refactor unrelated code because it's nearby, or you could improve it slightly
+- Assume nothing exists and create from scratch; overwrite files that might have been there
+- Replace config/dependency approach without explicit request
+
+## Config and Project Structure
+
+Respect existing config (YAML/env/secrets), preserve project layout, match existing conventions. Do not replace approaches without explicit request.
+
+## Pace and Deliberation
+
+Read files before editing. One concern per change. If ambiguous, ask or propose minimal approach before broad changes.
+
+## Examples
+
+```text
+❌ User: "The service doesn't start."
+   Agent: Creates new main.go and config.go from scratch, overwriting what existed.
+
+✅ User: "The service doesn't start."
+   Agent: Reads main.go, config loading, and logs. Identifies the actual failure (e.g. missing config file, wrong path). Makes a targeted fix.
+```
+
+```text
+❌ User: "We need to use the config YAMLs."
+   Agent: Replaces env-based startup with config.Load(), removing all env fallbacks.
+
+✅ User: "We need to use the config YAMLs."
+   Agent: Reads current main and config. Adds or updates config loading to use YAML as primary, preserving env overrides if they already exist.
+```
