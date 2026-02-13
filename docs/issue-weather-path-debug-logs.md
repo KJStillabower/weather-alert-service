@@ -34,8 +34,9 @@ Client IP or other client identifiers for log filtering are not in scope for thi
 
 ## Acceptance Criteria
 
-- [ ] Cache hit path logs at DEBUG
-- [ ] Cache miss path logs at DEBUG before upstream call
-- [ ] Success path logs at DEBUG with cached flag and duration
-- [ ] Rate limit middleware logs at DEBUG when denying
-- [ ] `docs/observability.md` updated with DEBUG log events for GET /weather
+- [x] Cache hit path logs at DEBUG
+- [x] Cache miss path logs at DEBUG before upstream call
+- [x] Success path logs at DEBUG with cached flag and duration
+- [x] Rate limit middleware logs at DEBUG when denying
+- [x] `docs/observability.md` updated with DEBUG log events for GET /weather
+- [x] Tests added: `TestHandler_GetWeather_DebugLogs_CacheHit`, `TestHandler_GetWeather_DebugLogs_CacheMiss`, `TestRateLimitMiddleware_DebugLogs_Denied`
