@@ -12,6 +12,7 @@
 - Updated `050-observability.mdc` to use `globs: **/observability/**` instead of `alwaysApply: true`
 - Updated `070-api-contract.mdc` to use `globs: **/http/**` instead of `alwaysApply: true`
 - Enhanced `040-testing.mdc` with inline test documentation example
+- Removed `version` and `lastUpdated` from all rule frontmatter (Git tracks changes)
 - Updated `docs/About.md` to reflect new rule structure
 
 **Remaining:**
@@ -73,7 +74,7 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 **Remove or simplify:**
 - ✅ `020-rule-standards.mdc` - Version tracking adds overhead; rules are living docs, not APIs **REMOVED**
-- Keep frontmatter minimal: `description` only; drop `version`, `lastUpdated` unless needed
+- ✅ Keep frontmatter minimal: `description` only; drop `version`, `lastUpdated` unless needed **COMPLETED** - Removed from all rules (Git tracks changes)
 
 **Result:** Less maintenance, simpler structure
 
@@ -97,8 +98,8 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 **Combine Options 1 + 2 + 3:**
 
 1. ✅ **Merge overlapping rules** (14 → 11 files) **COMPLETED**
-2. 🔄 **Reduce always-apply** (3 core + context-specific) **IN PROGRESS** - 3 rules now context-specific (`040`, `050`, `070`)
-3. ✅ **Simplify meta-rules** (drop version tracking overhead) **COMPLETED** - `020-rule-standards.mdc` removed
+2. 🔄 **Reduce always-apply** (4 core + context-specific) **IN PROGRESS** - 3 rules now context-specific (`040`, `050`, `070`)
+3. ✅ **Simplify meta-rules** (drop version tracking overhead) **COMPLETED** - `020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules
 4. [ ] **Extract verbose examples** (keep rules concise)
 
 **Target:** ~800-1000 lines total, 4 core always-apply rules (goal, role, preserve-existing, security), clearer boundaries
@@ -108,7 +109,7 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 - [x] Overlapping rules consolidated (030+080 → `030-patterns.mdc`, 100+021+101 → `100-documentation-communication.mdc`)
 - [ ] Only 4 core rules marked `alwaysApply: true` (currently: `000-goal`, `010-role`, `001-preserve-existing`, `090-security`; 3 others still use `alwaysApply`: `030-patterns`, `060-reliability`, `100-documentation-communication`)
 - [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc` updated)
-- [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed)
+- [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules)
 - [ ] Total rule lines reduced by ~40-50%
 - [ ] Cross-references minimized or removed
 - [x] Documentation updated if rule structure changes (`docs/About.md` updated)

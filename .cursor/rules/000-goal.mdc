@@ -1,8 +1,6 @@
 ---
 description: Project goal and scope for a Weather Alert Service
 alwaysApply: true
-version: 1.0.1
-lastUpdated: 2026-02-11
 ---
 
 # Weather Alert Service

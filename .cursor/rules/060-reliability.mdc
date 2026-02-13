@@ -1,8 +1,6 @@
 ---
 description: Reliability patterns for retries, timeouts, rate limits, graceful degradation, and shutdown
 alwaysApply: true
-version: 1.1.0
-lastUpdated: 2026-02-11
 ---
 
 # Reliability Rules

@@ -1,8 +1,6 @@
 ---
 description: Go language patterns, service architecture, and implementation conventions
 alwaysApply: true
-version: 2.0.0
-lastUpdated: 2026-02-12
 ---
 
 # Go and Service Patterns

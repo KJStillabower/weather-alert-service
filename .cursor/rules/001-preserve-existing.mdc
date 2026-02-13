@@ -1,8 +1,6 @@
 ---
 description: Preserve existing working code; verify before overwrite; prefer incremental changes
 alwaysApply: true
-version: 1.0.0
-lastUpdated: 2026-02-11
 ---
 
 # Preserve Existing Work

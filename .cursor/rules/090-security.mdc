@@ -1,8 +1,6 @@
 ---
 description: Security best practices for credential management, secrets handling, and secure coding patterns
 alwaysApply: true
-version: 1.0.0
-lastUpdated: 2026-02-11
 ---
 
 # Security Rules

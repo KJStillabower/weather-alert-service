@@ -1,8 +1,6 @@
 ---
 description: API contract standards for endpoints, response schema, errors, and HTTP semantics
 globs: **/http/**
-version: 1.2.0
-lastUpdated: 2026-02-12
 ---
 
 # API Contract Rules
