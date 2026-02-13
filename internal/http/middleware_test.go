@@ -15,6 +15,7 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/models"
 	"github.com/kjstillabower/weather-alert-service/internal/service"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestMiddleware_ThroughHandler(t *testing.T) {
@@ -192,6 +193,40 @@ func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
 				t.Errorf("error.code = %q, want RATE_LIMITED", errResp.Error.Code)
 			}
 		}
+	}
+}
+
+func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
+	mockClient := &mockWeatherClient{
+		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
+	}
+	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+
+	core, logs := observer.New(zap.DebugLevel)
+	logger := zap.New(core)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+
+	limiter := rate.NewLimiter(1, 1)
+
+	router := mux.NewRouter()
+	router.Use(CorrelationIDMiddleware(logger))
+	router.Use(MetricsMiddleware)
+	router.Use(RateLimitMiddleware(limiter))
+	router.HandleFunc("/weather/{location}", handler.GetWeather)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("GET", "/weather/seattle", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if i == 2 && w.Code != http.StatusTooManyRequests {
+			t.Fatalf("request 2: status = %d, want 429", w.Code)
+		}
+	}
+
+	entries := logs.FilterMessage("rate limit denied").All()
+	if len(entries) < 1 {
+		t.Fatalf("want at least 1 rate limit denied log, got %d", len(entries))
 	}
 }
 

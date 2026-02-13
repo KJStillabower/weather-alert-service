@@ -6,10 +6,10 @@ Single operational guide for the Weather Alert Service. Use this document to int
 
 Observability consists of:
 
-- **Health** (`GET /health`) — Lifecycle-aware status for routing and scaling
-- **Metrics** (`GET /metrics`) — Prometheus-format counters, histograms, gauges
-- **Logging** — Structured JSON to stderr; decisions, boundaries, failures
-- **Alerting** — Sample rules in `samples/alerting/`
+- **[Health](#health-and-lifecycle)** (`GET /health`) — Lifecycle-aware status for routing and scaling
+- **[Metrics](#metrics)** (`GET /metrics`) — Prometheus-format counters, histograms, gauges
+- **[Logging](#logging)** — Structured JSON to stderr; decisions, boundaries, failures
+- **[Alerting](#alerts-and-runbooks)** — Sample rules in `samples/alerting/`
 
 Our observability strategy treats each pillar as a distinct signal with a single responsibility. Health exposes lifecycle state so load balancers and orchestrators know when to route traffic; metrics quantify performance for dashboards, SLOs, and alerting; logging captures context for the events that matter (decisions, boundaries, failures) without duplicating what metrics already convey; alerts escalate when thresholds are breached. Together they answer the questions operators need: Is the service ready? How is it performing? What went wrong? Why?
 
@@ -126,9 +126,13 @@ This section lists log events that can be generated in each code path. No log ev
 
 | Log Event | Level | When | Fields |
 |-----------|-------|------|--------|
+| `cache hit` | DEBUG | Cache returns data for location | `location` |
+| `cache miss, fetching upstream` | DEBUG | Cache miss; about to call OpenWeatherMap | `location` |
+| `weather served` | DEBUG | Success (cache or upstream) | `location`, `cached`, `duration` |
+| `rate limit denied` | DEBUG | Rate limiter returns 429 | (correlation_id from context) |
 | `upstream error` | DEBUG | Weather fetch fails (503 to client) | `error` |
 
-Routine success, cache hits, and 429 responses are not sent to the log. They are covered by metrics and health status.
+At INFO (default), routine success, cache hits, and 429 responses produce no logs. Set `LOG_LEVEL=DEBUG` when troubleshooting to trace request flow.
 
 #### GET /health
 
