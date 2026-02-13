@@ -26,6 +26,8 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | `httpRequestsTotal` | Counter | method, route, statusCode | Total requests; `rate()` for QPS | Sudden drops (outage), spikes (surge); error rate by statusCode |
 | `httpRequestDurationSeconds` | Histogram | method, route | Request latency; p95/p99 for SLOs | p95/p99 increases; SLO breaches; approaching request timeout |
 | `httpRequestsInFlight` | Gauge | — | Concurrent requests | Saturation; sustained high = capacity or slow downstream |
+| `httpRequestSizeBytes` | Histogram | method, route | Request body size in bytes | DoS; unusually large payloads; capacity planning |
+| `httpResponseSizeBytes` | Histogram | method, route, statusCode | Response body size in bytes | Large payloads; capacity planning |
 
 #### External API
 
@@ -34,12 +36,15 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | `weatherApiCallsTotal` | Counter | status | OpenWeatherMap calls; status: success, error, rate_limited, client_error, server_error | Error vs success ratio; rate_limited = API quota |
 | `weatherApiDurationSeconds` | Histogram | status | Upstream latency | p95 > 2s (degradation); p99 > 5s (timeout risk) |
 | `weatherApiRetriesTotal` | Counter | — | Retry attempts | High rate = unstable upstream; transient failures |
+| `weatherApiErrorsTotal` | Counter | category | Weather API errors by category (timeout, network, invalid_api_key, rate_limited, upstream_5xx, parsing, etc.) | Error mix; debugging; see client.CategorizeError |
 
 #### Cache
 
 | Metric | Type | Labels | Purpose | Watch for |
 |--------|------|--------|---------|-----------|
 | `cacheHitsTotal` | Counter | cacheType | Cache hits; hit rate = hits / weatherQueriesTotal | Low hit rate; diminishing freshness vs cost trade-off |
+| `cacheStampedeDetectedTotal` | Counter | location | Times concurrent cache misses for same key exceeded 1 (stampede) | Thundering herd; consider request coalescing |
+| `cacheStampedeConcurrency` | Histogram | location | Concurrent miss count when stampede detected | Severity of stampede; per-key load |
 
 #### Business
 
@@ -47,6 +52,12 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 |--------|------|--------|---------|-----------|
 | `weatherQueriesTotal` | Counter | — | Total lookups; `rate()` for QPS | Traffic volume; unexpected drop or spike |
 | `weatherQueriesByLocationTotal` | Counter | location | Per-location (allow-list; others = "other") | Top locations; "other" dominating = add to allow-list |
+
+#### Errors (HTTP)
+
+| Metric | Type | Labels | Purpose | Watch for |
+|--------|------|--------|---------|-----------|
+| `httpErrorsTotal` | Counter | method, route, category | HTTP errors by category (timeout, upstream_5xx, validation, etc.) | Error mix; debugging; aligns with writeServiceError |
 
 #### Rate limit
 
@@ -85,6 +96,10 @@ Common queries for dashboards and ad-hoc investigation:
 | **Top locations (1h)** | `topk(10, sum by (location)(rate(weatherQueriesByLocationTotal[1h])))` |
 | **"Other" location share** | `rate(weatherQueriesByLocationTotal{location="other"}[1h]) / rate(weatherQueriesTotal[1h])` |
 | **CPU utilization** | `rate(process_cpu_seconds_total[1m])` |
+| **Errors by category (API)** | `sum by (category)(rate(weatherApiErrorsTotal[5m]))` |
+| **Errors by category (HTTP)** | `sum by (route, category)(rate(httpErrorsTotal[5m]))` |
+| **SLO availability (after recording rules)** | `http:availability:ratio` |
+| **SLO error budget remaining** | `http:error_budget_remaining:ratio` |
 
 ---
 
@@ -249,6 +264,37 @@ SLOs are driven by config. Changing `config/[env].yaml` changes effective target
 
 ---
 
+## SLO Tracking (Recording Rules)
+
+Prometheus recording rules in `samples/alerting/recording-rules-slo.yaml` compute SLO-related time series from raw metrics. Load them via `rule_files` in `prometheus.yaml` (see `samples/alerting/prometheus.yaml`).
+
+### SLO Targets (defaults in recording rules)
+
+| SLO | Target | Recording rule | Compliance rule |
+|-----|--------|----------------|-----------------|
+| Availability | 99.9% | `http:availability:ratio` (1 - error_rate) | `http:slo_availability:compliance` (1 = OK) |
+| Error rate | ≤ 0.1% | `http:error_rate:ratio` | — |
+| Error budget | Remaining ratio | `http:error_budget_remaining:ratio` (1 = full, 0 = exhausted) | — |
+| Latency p95 | ≤ 1s | `http:latency_p95:seconds` (per route) | `http:slo_latency_p95:compliance` |
+| Latency p99 | ≤ 2s | `http:latency_p99:seconds` (per route) | `http:slo_latency_p99:compliance` |
+
+Targets are defined in the recording rule file header and in the compliance expressions. Tune them to match your policy (e.g. 0.999 for 99.9%, 0.001 for 0.1% error rate).
+
+### PromQL examples (SLO)
+
+| Question | Query |
+|----------|-------|
+| **Current availability** | `http:availability:ratio` |
+| **Error budget remaining** | `http:error_budget_remaining:ratio` |
+| **Availability SLO compliant?** | `http:slo_availability:compliance` (1 = yes, 0 = breach) |
+| **p95 latency by route** | `http:latency_p95:seconds` |
+| **Routes breaching p95 SLO** | `http:slo_latency_p95:compliance == 0` |
+| **Burn rate (error rate over 1h)** | `sum(rate(httpRequestsTotal{statusCode=~"5.."}[1h])) / sum(rate(httpRequestsTotal[1h]))` |
+
+Validate the recording rules file with `promtool check rules samples/alerting/recording-rules-slo.yaml` when Prometheus tooling is available.
+
+---
+
 ## Alerts and Runbooks
 
 Alerts are defined in `samples/alerting/alert-rules.yaml`. Environment-specific rules are available:
@@ -306,8 +352,9 @@ Adjust `targets` for your deployment (e.g. service discovery, multiple instances
 | Document | Purpose |
 |----------|---------|
 | `docs/observability-metrics-plan.md` | Metric design, cardinality, allow-list |
+| `docs/plans/observability-improvements-plan.md` | Observability improvements (size metrics, stampede, error categories, SLO recording rules) |
 | `docs/service-level-objective-plan.md` | SLO definitions, config mapping |
 | `docs/health-status-plan.md` | Lifecycle states, formulas |
-| `samples/alerting/` | Prometheus, alert rules, Alertmanager |
+| `samples/alerting/` | Prometheus, alert rules, Alertmanager, recording-rules-slo.yaml |
 | `050-observability.mdc` | Rules and conventions |
 | `docs/issue-improved-observability-documentation.md` | Issue tracking for further improvements |

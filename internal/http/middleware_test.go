@@ -3,8 +3,10 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,5 +377,45 @@ func TestSubrouter_WeatherRouteWithTimeoutAndRateLimit(t *testing.T) {
 	// Assert: Verify 200 status (subrouter routes correctly)
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 (subrouter should route /weather/{location})", w.Code)
+	}
+}
+
+// TestMiddleware_SizeMetricsMiddleware_RecordsSizes verifies that SizeMetricsMiddleware
+// records response size and restores request body for downstream handlers.
+func TestMiddleware_SizeMetricsMiddleware_RecordsSizes(t *testing.T) {
+	// Arrange: Router with size middleware and handlers that return fixed payload or echo body
+	router := mux.NewRouter()
+	router.Use(MetricsMiddleware)
+	router.Use(SizeMetricsMiddleware)
+	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}).Methods("GET")
+	router.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}).Methods("POST")
+
+	// Act & Assert: GET has no body, response "ok" (2 bytes)
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /health status = %d, want 200", w.Code)
+	}
+	if w.Body.Len() != 2 {
+		t.Errorf("response body len = %d, want 2", w.Body.Len())
+	}
+
+	// Act & Assert: POST body is restored so handler can read and echo it
+	req2 := httptest.NewRequest("POST", "/echo", strings.NewReader("hello"))
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Errorf("POST /echo status = %d, want 200", w2.Code)
+	}
+	if got := w2.Body.String(); got != "hello" {
+		t.Errorf("echo body = %q, want hello", got)
 	}
 }

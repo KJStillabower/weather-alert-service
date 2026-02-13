@@ -17,18 +17,20 @@ import (
 // WeatherService orchestrates weather data retrieval using cache-aside pattern
 // with upstream API fallback. Implements the service layer business logic.
 type WeatherService struct {
-	client client.WeatherClient
-	cache  cache.Cache
-	ttl    time.Duration
+	client          client.WeatherClient
+	cache           cache.Cache
+	ttl             time.Duration
+	stampedeTracker *stampedeTracker 
 }
 
 // NewWeatherService creates a new WeatherService with the provided dependencies.
 // TTL specifies the cache expiration duration for weather data.
 func NewWeatherService(client client.WeatherClient, cache cache.Cache, ttl time.Duration) *WeatherService {
 	return &WeatherService{
-		client: client,
-		cache:  cache,
-		ttl:    ttl,
+		client:          client,
+		cache:           cache,
+		ttl:             ttl,
+		stampedeTracker: newStampedeTracker(),
 	}
 }
 
@@ -58,6 +60,14 @@ func (s *WeatherService) GetWeather(ctx context.Context, location string) (model
 			logger.Debug("weather served", zap.String("location", key), zap.Bool("cached", true), zap.Duration("duration", time.Since(start)))
 		}
 		return cached, nil
+	}
+
+	concurrentMisses := s.stampedeTracker.RecordMiss(key)
+	defer s.stampedeTracker.RecordHit(key)
+	locLabel := observability.MetricLocationLabel(key)
+	if concurrentMisses > 1 {
+		observability.CacheStampedeDetectedTotal.WithLabelValues(locLabel).Inc()
+		observability.CacheStampedeConcurrency.WithLabelValues(locLabel).Observe(float64(concurrentMisses))
 	}
 
 	if logger != nil {

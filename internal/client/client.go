@@ -76,6 +76,7 @@ func NewOpenWeatherClientWithRetry(apiKey, apiURL string, timeout time.Duration,
 	}, nil
 }
 
+// openWeatherResponse is the JSON shape returned by the OpenWeatherMap API for current weather.
 type openWeatherResponse struct {
 	Main struct {
 		Temp     float64 `json:"temp"`
@@ -134,6 +135,7 @@ func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (model
 	req, err := c.buildRequest(reqCtx, location)
 	if err != nil {
 		observability.WeatherAPICallsTotal.WithLabelValues("error").Inc()
+		observability.WeatherAPIErrorsTotal.WithLabelValues(string(CategorizeError(err))).Inc()
 		return models.WeatherData{}, fmt.Errorf("build request: %w", err)
 	}
 
@@ -147,7 +149,7 @@ func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (model
 		duration := time.Since(start).Seconds()
 		observability.WeatherAPICallsTotal.WithLabelValues("error").Inc()
 		observability.WeatherAPIDuration.WithLabelValues("error").Observe(duration)
-		
+		observability.WeatherAPIErrorsTotal.WithLabelValues(string(CategorizeError(err))).Inc()
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return models.WeatherData{}, fmt.Errorf("request timeout: %w", err)
 		}
@@ -161,16 +163,21 @@ func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (model
 	observability.WeatherAPIDuration.WithLabelValues(status).Observe(duration)
 
 	if err := c.handleErrorResponse(resp); err != nil {
+		observability.WeatherAPIErrorsTotal.WithLabelValues(string(CategorizeError(err))).Inc()
 		return models.WeatherData{}, err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		observability.WeatherAPICallsTotal.WithLabelValues("error").Inc()
+		observability.WeatherAPIErrorsTotal.WithLabelValues(string(CategorizeError(err))).Inc()
 		return models.WeatherData{}, fmt.Errorf("read response body: %w", err)
 	}
 
 	var apiResp openWeatherResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
+		observability.WeatherAPICallsTotal.WithLabelValues("error").Inc()
+		observability.WeatherAPIErrorsTotal.WithLabelValues(string(CategorizeError(err))).Inc()
 		return models.WeatherData{}, fmt.Errorf("parse response: %w", err)
 	}
 

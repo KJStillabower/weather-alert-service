@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	// registry is the default Prometheus registry for application and runtime metrics.
 	registry *prometheus.Registry
 
 	// HTTP request rate. Watch for: sudden drops (service down) or spikes (traffic surge).
@@ -45,6 +46,21 @@ var (
 
 	// Rate limit denials. Watch for: overload, capacity exceeded.
 	RateLimitDeniedTotal prometheus.Counter
+
+	// HTTP request body size in bytes. Watch for: DoS, capacity planning.
+	HTTPRequestSizeBytes *prometheus.HistogramVec
+	// HTTP response body size in bytes. Watch for: capacity planning, large payloads.
+	HTTPResponseSizeBytes *prometheus.HistogramVec
+
+	// Cache stampede detections (concurrent misses > 1 for same key). Watch for: thundering herd.
+	CacheStampedeDetectedTotal *prometheus.CounterVec
+	// Concurrent cache misses per key when stampede detected.
+	CacheStampedeConcurrency *prometheus.HistogramVec
+
+	// Weather API errors by category. Watch for: error mix, debugging.
+	WeatherAPIErrorsTotal *prometheus.CounterVec
+	// HTTP errors by route and category. Watch for: error mix, debugging.
+	HTTPErrorsTotal *prometheus.CounterVec
 
 	// trackedLocations is built from config; used to resolve location for metrics.
 	trackedLocationsMu sync.RWMutex
@@ -129,6 +145,51 @@ func init() {
 			Help: "Total number of requests denied by rate limiter (429)",
 		},
 	)
+	HTTPRequestSizeBytes = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "httpRequestSizeBytes",
+			Help:    "HTTP request body size in bytes",
+			Buckets: []float64{100, 500, 1000, 5000, 10000, 50000, 100000},
+		},
+		[]string{"method", "route"},
+	)
+	HTTPResponseSizeBytes = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "httpResponseSizeBytes",
+			Help:    "HTTP response body size in bytes",
+			Buckets: []float64{100, 500, 1000, 5000, 10000, 50000, 100000},
+		},
+		[]string{"method", "route", "statusCode"},
+	)
+	CacheStampedeDetectedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cacheStampedeDetectedTotal",
+			Help: "Total number of cache stampede detections (concurrent misses > 1 for same key)",
+		},
+		[]string{"location"},
+	)
+	CacheStampedeConcurrency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cacheStampedeConcurrency",
+			Help:    "Number of concurrent cache misses for same key when stampede detected",
+			Buckets: []float64{1, 2, 5, 10, 20, 50, 100},
+		},
+		[]string{"location"},
+	)
+	WeatherAPIErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "weatherApiErrorsTotal",
+			Help: "Total number of weather API errors by category",
+		},
+		[]string{"category"},
+	)
+	HTTPErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "httpErrorsTotal",
+			Help: "Total number of HTTP errors by category",
+		},
+		[]string{"method", "route", "category"},
+	)
 
 	registry.MustRegister(
 		HTTPRequestsTotal, HTTPRequestDuration, HTTPRequestsInFlight,
@@ -136,6 +197,9 @@ func init() {
 		CacheHitsTotal,
 		WeatherQueriesTotal, WeatherQueriesByLocationTotal,
 		RateLimitDeniedTotal,
+		HTTPRequestSizeBytes, HTTPResponseSizeBytes,
+		CacheStampedeDetectedTotal, CacheStampedeConcurrency,
+		WeatherAPIErrorsTotal, HTTPErrorsTotal,
 	)
 }
 
@@ -192,6 +256,19 @@ func normalizeLocationForMetrics(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ToLower(s)
 	return s
+}
+
+// MetricLocationLabel returns the location label for metrics (e.g. stampede, queries).
+// Tracked locations use the normalized name; others use "other" to limit cardinality.
+func MetricLocationLabel(location string) string {
+	loc := normalizeLocationForMetrics(location)
+	trackedLocationsMu.RLock()
+	_, ok := trackedLocations[loc]
+	trackedLocationsMu.RUnlock()
+	if ok {
+		return loc
+	}
+	return "other"
 }
 
 // MetricsHandler returns an http.Handler that serves application and runtime metrics.

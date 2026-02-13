@@ -96,6 +96,7 @@ func main() {
 	router := mux.NewRouter()
 	router.Use(httphandler.CorrelationIDMiddleware(logger))
 	router.Use(httphandler.MetricsMiddleware)
+	router.Use(httphandler.SizeMetricsMiddleware)
 	router.HandleFunc("/health", handler.GetHealth).Methods("GET")
 	router.Handle("/metrics", observability.MetricsHandler())
 	weatherRouter := router.PathPrefix("/weather").Subrouter()

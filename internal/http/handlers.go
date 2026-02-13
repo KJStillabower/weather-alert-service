@@ -48,8 +48,8 @@ type Handler struct {
 	healthConfig     *HealthConfig
 	logger           *zap.Logger
 	rateLimiter      *rate.Limiter
-	healthStatusMu   sync.Mutex
-	healthStatusPrev string
+	healthStatusMu   sync.Mutex   // guards healthStatusPrev when logging health status transitions
+	healthStatusPrev string       // previous health status for transition logging
 }
 
 // NewHandler returns a new Handler.
@@ -207,8 +207,11 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 }
 
 // writeServiceError writes a 503 Service Unavailable error response for upstream failures.
-// Logs the underlying error at DEBUG level if logger is available in request context.
+// Records error category in HTTPErrorsTotal and logs the underlying error at DEBUG level if logger is available.
 func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
+	category := client.CategorizeError(err)
+	route := getRoute(r)
+	observability.HTTPErrorsTotal.WithLabelValues(r.Method, route, string(category)).Inc()
 	writeError(w, r, http.StatusServiceUnavailable, "UPSTREAM_UNAVAILABLE", "Unable to fetch weather data")
 	if logger, ok := r.Context().Value("logger").(*zap.Logger); ok && logger != nil {
 		logger.Debug("upstream error", zap.Error(err))

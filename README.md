@@ -313,11 +313,11 @@ curl http://localhost:8080/metrics
 ```
 
 Returns Prometheus-formatted metrics including:
-- `httpRequestsTotal` - HTTP request counts
-- `httpRequestDurationSeconds` - Request latencies
-- `weatherAPICallsTotal` - External API call counts
-- `weatherAPIDurationSeconds` - API call latencies
-- `cacheHitsTotal` - Cache hits. Cache misses = lookups - hits; hit rate = hits / (hits + misses).
+- `httpRequestsTotal`, `httpRequestDurationSeconds`, `httpRequestSizeBytes`, `httpResponseSizeBytes` - Request counts, latencies, and payload sizes
+- `weatherAPICallsTotal`, `weatherApiDurationSeconds`, `weatherApiErrorsTotal` - External API calls and errors by category
+- `cacheHitsTotal`, `cacheStampedeDetectedTotal`, `cacheStampedeConcurrency` - Cache hits and stampede detection
+- `weatherQueriesTotal`, `weatherQueriesByLocationTotal`, `httpErrorsTotal` - Queries and HTTP errors by category
+- Rate limit and runtime metrics. Full list and PromQL: [docs/observability.md](docs/observability.md)
 
 #### Health Check
 
@@ -405,6 +405,12 @@ Prometheus metrics endpoint for scraping. Returns application metrics plus proce
 | `cacheHitsTotal` | Counter | `cacheType` | Cache hits. Misses = lookups - hits. Hit rate = hits/(hits+misses). |
 | `weatherQueriesTotal` | Counter | — | Total weather lookups. rate() for QPS. |
 | `weatherQueriesByLocationTotal` | Counter | `location` | Per-location queries (allow-list; others use `other`). Top: `topk(10, sum by (location)(rate(...[1h])))`. |
+| `httpRequestSizeBytes` | Histogram | `method`, `route` | Request body size. Capacity planning; DoS awareness. |
+| `httpResponseSizeBytes` | Histogram | `method`, `route`, `statusCode` | Response body size. |
+| `cacheStampedeDetectedTotal` | Counter | `location` | Concurrent cache misses > 1 for same key (stampede). |
+| `cacheStampedeConcurrency` | Histogram | `location` | Concurrent miss count when stampede detected. |
+| `weatherApiErrorsTotal` | Counter | `category` | API errors by category (timeout, rate_limited, upstream_5xx, etc.). |
+| `httpErrorsTotal` | Counter | `method`, `route`, `category` | HTTP errors by category. |
 
 **Runtime metrics** (process_cpu_seconds_total, process_resident_memory_bytes, go_goroutines, etc.): standard Prometheus process and Go collectors. CPU utilization: `rate(process_cpu_seconds_total[1m])`.
 
@@ -417,7 +423,7 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-**Alerting samples:** `samples/alerting/` contains example `prometheus.yaml`, `alert-rules.yaml`, and `alertmanager.yaml` with PagerDuty and FireHydrant integration.
+**Alerting samples:** `samples/alerting/` contains example `prometheus.yaml`, `alert-rules.yaml`, `recording-rules-slo.yaml` (SLO calculations), and `alertmanager.yaml` with PagerDuty and FireHydrant integration. See [docs/observability.md](docs/observability.md) for SLO tracking and recording rules.
 
 ### Logging
 

@@ -15,9 +15,10 @@ alerting:
         - targets:
             - localhost:9093  # Alertmanager default port
 
-# Load alert rules
+# Load alert and SLO recording rules
 rule_files:
   - alert-rules.yaml
+  - recording-rules-slo.yaml
 
 scrape_configs:
   - job_name: 'weather-alert-service'

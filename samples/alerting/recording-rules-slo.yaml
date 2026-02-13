@@ -1,0 +1,65 @@
+# Prometheus recording rules for SLO calculations (Weather Alert Service)
+# Load via rule_files in prometheus.yaml, e.g.:
+#   rule_files:
+#     - alert-rules.yaml
+#     - recording-rules-slo.yaml
+#
+# SLO targets (tune to match your policy; these are defaults for alerting/compliance):
+#   Availability: 99.9% (0.999) — error rate ≤ 0.1%
+#   Error rate:  ≤ 0.1% (0.001)
+#   Latency p95: ≤ 1s
+#   Latency p99: ≤ 2s
+#
+# Recording rules produce time series that can be used in dashboards, alerts, and
+# error-budget burn rate. See docs/observability.md for PromQL examples and usage.
+
+groups:
+  - name: slo_calculations
+    interval: 1m
+    rules:
+      # Error rate: fraction of requests that are 5xx
+      - record: http:error_rate:ratio
+        expr: |
+          sum(rate(httpRequestsTotal{statusCode=~"5.."}[5m]))
+          /
+          sum(rate(httpRequestsTotal[5m]))
+
+      # Availability: 1 - error_rate (e.g. 0.999 = 99.9%)
+      - record: http:availability:ratio
+        expr: |
+          1 - (http:error_rate:ratio)
+
+      # Error budget remaining: 1 - (error_rate / SLO_target). Target 0.1% = 0.001.
+      # Value 1 = full budget; 0 = exhausted. No sample when no traffic.
+      - record: http:error_budget_remaining:ratio
+        expr: |
+          1 - ((http:error_rate:ratio) / 0.001)
+
+      # p95 request latency per route (seconds)
+      - record: http:latency_p95:seconds
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(httpRequestDurationSeconds_bucket[5m])) by (le, route)
+          )
+
+      # p99 request latency per route (seconds)
+      - record: http:latency_p99:seconds
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(httpRequestDurationSeconds_bucket[5m])) by (le, route)
+          )
+
+      # SLO compliance: availability ≥ 99.9% (1 = compliant, 0 = breach)
+      - record: http:slo_availability:compliance
+        expr: |
+          http:availability:ratio >= 0.999
+
+      # SLO compliance: p95 latency ≤ 1s (1 = compliant, 0 = breach)
+      - record: http:slo_latency_p95:compliance
+        expr: |
+          http:latency_p95:seconds <= 1.0
+
+      # SLO compliance: p99 latency ≤ 2s (1 = compliant, 0 = breach)
+      - record: http:slo_latency_p99:compliance
+        expr: |
+          http:latency_p99:seconds <= 2.0

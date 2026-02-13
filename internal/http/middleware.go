@@ -1,9 +1,11 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -61,6 +63,48 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 
 		observability.HTTPRequestsTotal.WithLabelValues(method, route, statusCode).Inc()
 		observability.HTTPRequestDuration.WithLabelValues(method, route).Observe(duration)
+	})
+}
+
+// sizeRecorder wraps http.ResponseWriter to capture response size and status code for metrics.
+type sizeRecorder struct {
+	http.ResponseWriter
+	size       int64
+	statusCode int
+}
+
+// Write delegates to the underlying ResponseWriter and adds the byte count to size.
+func (s *sizeRecorder) Write(b []byte) (int, error) {
+	n, err := s.ResponseWriter.Write(b)
+	s.size += int64(n)
+	return n, err
+}
+
+// WriteHeader records the status code and delegates to the underlying ResponseWriter.
+func (s *sizeRecorder) WriteHeader(code int) {
+	s.statusCode = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+// SizeMetricsMiddleware records request and response body sizes in Prometheus histograms.
+// Request body is read and restored so handlers still receive it. GET requests typically have zero body size.
+func SizeMetricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var requestSize int64
+		if r.Body != nil {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			requestSize = int64(len(bodyBytes))
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			route := getRoute(r)
+			observability.HTTPRequestSizeBytes.WithLabelValues(r.Method, route).Observe(float64(requestSize))
+		}
+
+		recorder := &sizeRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+
+		route := getRoute(r)
+		statusCode := statusCodeString(recorder.statusCode)
+		observability.HTTPResponseSizeBytes.WithLabelValues(r.Method, route, statusCode).Observe(float64(recorder.size))
 	})
 }
 
