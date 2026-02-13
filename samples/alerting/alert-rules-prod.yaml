@@ -1,0 +1,216 @@
+# Prometheus alert rules for Weather Alert Service - Production Environment
+# Aligned with docs/alerting-thresholds.md
+#
+# Production environment thresholds are stricter to catch issues early and align
+# with SLOs. See docs/alerting-thresholds.md for threshold rationale and tuning guidance.
+#
+# Metric sources:
+# - Application: httpRequestsTotal, httpRequestDurationSeconds, httpRequestsInFlight,
+#   weatherApiCallsTotal, weatherApiDurationSeconds, weatherApiRetriesTotal,
+#   cacheHitsTotal, weatherQueriesTotal, weatherQueriesByLocationTotal,
+#   rateLimitRequestsInWindow, rateLimitRejectsInWindow, rateLimitDeniedTotal
+# - Runtime: process_* and go_* (Prometheus process/go collectors)
+
+groups:
+  - name: weather-service-availability
+    rules:
+      # Instance down: target not scrapeable (service crashed, network, etc.)
+      # Prod: 1 minute (immediate detection critical)
+      - alert: WeatherServiceDown
+        expr: up{job="weather-alert-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Weather service instance is down"
+          description: "Instance {{ $labels.instance }} of job {{ $labels.job }} has been unreachable for more than 1 minute."
+          runbook_url: "https://example.com/runbooks/weather-service-down"
+
+  - name: weather-service-request-layer
+    rules:
+      # High 5xx error rate: > 1% (prod: stricter than base 5%)
+      # Aligned with 99.9% availability SLO (0.1% errors) - threshold at 1% for early warning
+      - alert: HighHTTPErrorRate
+        expr: |
+          sum(rate(httpRequestsTotal{job="weather-alert-service", statusCode=~"5.."}[5m]))
+          /
+          sum(rate(httpRequestsTotal{job="weather-alert-service"}[5m]))
+          > 0.01
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "More than 1% of requests are returning 5xx ({{ $value | humanizePercentage }}) over the last 3 minutes."
+          runbook_url: "https://example.com/runbooks/high-error-rate"
+
+      # High request latency: p95 > 2s (prod: stricter than base 5s)
+      # Aligned with p95 < 1s SLO - threshold at 2s for early warning
+      - alert: HighHTTPLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(httpRequestDurationSeconds_bucket{job="weather-alert-service"}[5m])) by (le, route)
+          ) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP request latency (p95 > 2s)"
+          description: "Route {{ $labels.route }} p95 latency is {{ $value | humanize }}s."
+          runbook_url: "https://example.com/runbooks/high-latency"
+
+      # Saturation: in-flight requests consistently high
+      # Prod: > 50 (tune based on actual production capacity)
+      - alert: HighRequestSaturation
+        expr: httpRequestsInFlight{job="weather-alert-service"} > 50
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request saturation"
+          description: "{{ $value }} requests in flight; may indicate capacity limits or slow downstream."
+
+      # Rate limit rejections: actively rejecting requests (429s in window)
+      # Prod: > 10 (stricter detection)
+      - alert: HighRateLimitRejections
+        expr: rateLimitRejectsInWindow{job="weather-alert-service"} > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit rejections"
+          description: "{{ $value }} requests denied (429) in sliding window; service is at capacity."
+          runbook_url: "https://example.com/runbooks/rate-limit-rejections"
+
+      # Rate limit requests approaching capacity: high request volume in window
+      # Prod: Tune based on production rate_limit_rps * overload_window config
+      # Example: if rate_limit_rps=100 and overload_window=60s, threshold might be 4800 (80% of 6000)
+      - alert: RateLimitRequestsHigh
+        expr: rateLimitRequestsInWindow{job="weather-alert-service"} > 4800
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limit requests approaching capacity"
+          description: "{{ $value }} requests in window; approaching rate limit capacity. Tune threshold based on rate_limit_rps * overload_window config."
+          runbook_url: "https://example.com/runbooks/rate-limit-capacity"
+
+      # High 4xx error rate: client errors (bad requests, not found, etc.)
+      # Prod: > 5% (stricter than base 10%)
+      - alert: HighHTTP4xxErrorRate
+        expr: |
+          sum(rate(httpRequestsTotal{job="weather-alert-service", statusCode=~"4.."}[5m]))
+          /
+          sum(rate(httpRequestsTotal{job="weather-alert-service"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 4xx error rate"
+          description: "More than 5% of requests are returning 4xx client errors ({{ $value | humanizePercentage }}) over the last 5 minutes."
+          runbook_url: "https://example.com/runbooks/high-4xx-error-rate"
+
+      # Zero requests: service receiving no traffic unexpectedly
+      # Prod: 10 minutes (catch routing issues early)
+      - alert: ZeroHTTPRequests
+        expr: |
+          sum(rate(httpRequestsTotal{job="weather-alert-service"}[10m])) == 0
+          and
+          sum(rate(httpRequestsTotal{job="weather-alert-service"}[30m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Zero HTTP requests received"
+          description: "Service received no requests in the last 10 minutes but had traffic in the previous 30 minutes. Possible routing issue or service isolation."
+          runbook_url: "https://example.com/runbooks/zero-requests"
+
+  - name: weather-service-upstream
+    rules:
+      # Weather API error ratio: high failure rate from OpenWeatherMap
+      # Prod: > 10% (stricter than base 20%)
+      - alert: WeatherAPIHighErrorRate
+        expr: |
+          sum(rate(weatherApiCallsTotal{job="weather-alert-service", status=~"error|server_error|rate_limited"}[5m]))
+          /
+          sum(rate(weatherApiCallsTotal{job="weather-alert-service"}[5m]))
+          > 0.10
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Weather API high error rate"
+          description: "More than 10% of OpenWeatherMap calls are failing ({{ $value | humanizePercentage }})."
+          runbook_url: "https://example.com/runbooks/upstream-api-errors"
+
+      # Weather API latency: p95 > 2s (per observability plan)
+      # Prod: Same as base, aligned with observability plan
+      - alert: WeatherAPISlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(weatherApiDurationSeconds_bucket{job="weather-alert-service", status="success"}[5m])) by (le)
+          ) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Weather API slow (p95 > 2s)"
+          description: "OpenWeatherMap API p95 latency is {{ $value | humanize }}s."
+          runbook_url: "https://example.com/runbooks/upstream-slow"
+
+      # High retries: unstable upstream (transient failures causing retries)
+      # Prod: > 1 retry/s (stricter detection)
+      - alert: WeatherAPIHighRetries
+        expr: |
+          rate(weatherApiRetriesTotal{job="weather-alert-service"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High weather API retry rate"
+          description: "Retry rate {{ $value | humanize }}/s indicates unstable upstream."
+
+  - name: weather-service-cache
+    rules:
+      # Low cache hit rate: cache effectiveness degraded
+      # Prod: < 50% (same as base)
+      - alert: LowCacheHitRate
+        expr: |
+          sum(rate(cacheHitsTotal{job="weather-alert-service"}[5m]))
+          /
+          sum(rate(weatherQueriesTotal{job="weather-alert-service"}[5m]))
+          < 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate (< 50%)"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}; cache effectiveness degraded. May indicate TTL too short, cache eviction, or cache backend issues."
+          runbook_url: "https://example.com/runbooks/low-cache-hit-rate"
+
+  - name: weather-service-runtime
+    rules:
+      # Memory growth: possible leak (RSS increasing)
+      # Prod: > 500MB (tune based on production memory limits)
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="weather-alert-service"} > 500000000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High process memory (RSS > 500MB)"
+          description: "RSS is {{ $value | humanize }}B."
+          runbook_url: "https://example.com/runbooks/memory"
+
+      # Goroutine leak: sudden or sustained high count
+      # Prod: > 500 (tune based on production baseline)
+      - alert: HighGoroutineCount
+        expr: go_goroutines{job="weather-alert-service"} > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High goroutine count"
+          description: "{{ $value }} goroutines; possible leak."
+          runbook_url: "https://example.com/runbooks/goroutines"

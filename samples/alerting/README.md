@@ -11,7 +11,9 @@ These files are illustrative. They were generated according to the below rule-se
 | File | Purpose |
 |------|---------|
 | `prometheus.yaml` | Scrape config for the weather service; loads alert rules; sends alerts to Alertmanager |
-| `alert-rules.yaml` | Alert definitions using our metrics |
+| `alert-rules.yaml` | Base/default alert definitions using our metrics |
+| `alert-rules-dev.yaml` | Development environment alert rules (more lenient thresholds) |
+| `alert-rules-prod.yaml` | Production environment alert rules (stricter thresholds) |
 | `alertmanager.yaml` | Routes alerts to PagerDuty (critical) and FireHydrant (all) |
 
 ---
@@ -31,6 +33,68 @@ These files are illustrative. They were generated according to the below rule-se
 | `go_goroutines` | HighGoroutineCount | > 500 for 10m |
 
 Thresholds are examples; tune for your SLOs and capacity.
+
+---
+
+## Environment-Specific Alert Rules
+
+The repository includes environment-specific alert rule files:
+
+- `alert-rules.yaml` - Base/default rules (moderate thresholds)
+- `alert-rules-dev.yaml` - Development environment (more lenient thresholds)
+- `alert-rules-prod.yaml` - Production environment (stricter thresholds)
+
+### Usage
+
+**Development Environment:**
+
+```yaml
+# prometheus-dev.yaml
+rule_files:
+  - alert-rules-dev.yaml
+```
+
+**Production Environment:**
+
+```yaml
+# prometheus-prod.yaml
+rule_files:
+  - alert-rules-prod.yaml
+```
+
+**Key Differences:**
+
+| Alert | Base | Dev | Prod |
+|-------|------|-----|------|
+| `HighHTTPErrorRate` | 5% | 10% | 1% |
+| `HighHTTPLatency` | p95 > 5s | p95 > 10s | p95 > 2s |
+| `WeatherAPIHighErrorRate` | 20% | 30% | 10% |
+| `WeatherAPISlow` | p95 > 2s | p95 > 5s | p95 > 2s |
+| `LowCacheHitRate` | < 50% | < 30% | < 50% |
+| `HighMemoryUsage` | > 500MB | > 1GB | > 500MB |
+| `HighGoroutineCount` | > 500 | > 1000 | > 500 |
+
+See `docs/alerting-thresholds.md` for comprehensive threshold rationale, tuning guidance, and environment-specific recommendations.
+
+### Kubernetes ConfigMap Example
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alert-rules
+  namespace: monitoring
+data:
+  alert-rules-prod.yaml: |
+    # Paste contents of alert-rules-prod.yaml here
+```
+
+Then reference in Prometheus config:
+
+```yaml
+rule_files:
+  - /etc/prometheus/rules/alert-rules-prod.yaml
+```
 
 ---
 

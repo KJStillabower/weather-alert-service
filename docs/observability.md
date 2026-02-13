@@ -251,7 +251,13 @@ SLOs are driven by config. Changing `config/[env].yaml` changes effective target
 
 ## Alerts and Runbooks
 
-Alerts are defined in `samples/alerting/alert-rules.yaml`. Tune thresholds to match `config/[env].yaml`.
+Alerts are defined in `samples/alerting/alert-rules.yaml`. Environment-specific rules are available:
+- `alert-rules-dev.yaml` - Development (more lenient)
+- `alert-rules-prod.yaml` - Production (stricter)
+
+For alert threshold rationale, tuning guidance, and environment-specific recommendations, see `docs/alerting-thresholds.md`.
+
+Tune thresholds to match `config/[env].yaml` and your SLOs.
 
 | Alert | When It Fires | What to Check |
 |-------|---------------|---------------|
