@@ -25,7 +25,7 @@ Weather/
 │   ├── prod.yaml       # Production config
 │   └── secrets.yaml    # API key only (gitignored)
 ├── docs/               # Design and plan documentation
-│   ├── About.md        # This file - project overview and design
+│   ├── about.md        # This file - project overview and design
 │   ├── observability.md  # Comprehensive observability guide
 │   ├── test-coverage-summary.md  # Test coverage overview
 │   ├── rule-simplification-summary.md  # Rules simplification summary
@@ -119,7 +119,7 @@ This project uses Cursor rules (`.cursor/rules/*.mdc`) to guide AI-assisted deve
 - See `README.md` for setup and usage instructions
 - All code follows Go best practices and project-specific patterns defined in rules
 - Documentation organization:
-  - **Root docs:** Active reference guides (`About.md`, `observability.md`, summaries)
+  - **Root docs:** Active reference guides (`about.md`, `observability.md`, summaries)
   - **`docs/plans/`:** Historical design plan documents (preserved for context)
   - **`docs/issues/`:** GitHub issue tracking documents (preserved for context)
 

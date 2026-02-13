@@ -8,7 +8,7 @@ A production-ready backend service that provides weather data via REST API, inte
 
 **NOTES**
 - Design Documentation is elaborated in the [docs/](docs) folder.  Here there are a number of overviews detailing decision and implementation proceses to elaborate futher edits and expansions.
-- Overall [docs/About.md]() contains details on how this repo is setup and how to interact with design.
+- Overall [docs/about.md](docs/about.md) contains details on how this repo is setup and how to interact with design.
 
 
 ## API Endpoints
@@ -467,7 +467,7 @@ echo $WEATHER_API_KEY
 
 ## Development
 
-For development and contribution guidelines, see `About.md`.
+For development and contribution guidelines, see `docs/about.md`.
 
 ### Upcoming Features
 
