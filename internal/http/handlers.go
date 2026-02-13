@@ -137,28 +137,38 @@ func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// computeHealthStatus determines the current health status by evaluating multiple conditions
+// in priority order. Returns healthResult with status, HTTP status code, and reason.
+// Decision order: shutting-down > API key invalid > overloaded > idle > degraded > healthy.
+// Each condition is evaluated only if previous conditions are not met.
 func (h *Handler) computeHealthStatus(ctx context.Context) healthResult {
+	// Priority 1: Check if service is shutting down
 	if lifecycle.IsShuttingDown() {
 		return healthResult{"shutting-down", http.StatusServiceUnavailable, "signal"}
 	}
+	// Priority 2: If no health config, only check API key validity
 	if h.healthConfig == nil {
 		if err := h.client.ValidateAPIKey(ctx); err != nil {
 			return healthResult{"degraded", http.StatusServiceUnavailable, "api_key_invalid"}
 		}
 		return healthResult{"healthy", http.StatusOK, ""}
 	}
+	// Priority 3: Validate API key (required for all health checks)
 	if err := h.client.ValidateAPIKey(ctx); err != nil {
 		return healthResult{"degraded", http.StatusServiceUnavailable, "api_key_invalid"}
 	}
+	// Priority 4: Check overload threshold (rate limit denials exceed configured percentage)
 	threshold := float64(h.healthConfig.RateLimitRPS) * h.healthConfig.OverloadWindow.Seconds() * float64(h.healthConfig.OverloadThresholdPct) / 100
 	if float64(overload.RequestCount(h.healthConfig.OverloadWindow)) > threshold {
 		return healthResult{"overloaded", http.StatusServiceUnavailable, "overload_threshold"}
 	}
+	// Priority 5: Check idle conditions (only if uptime exceeds minimum lifespan)
 	if h.healthConfig.IdleWindow > 0 && h.healthConfig.MinimumLifespan > 0 && time.Since(h.healthConfig.StartTime) >= h.healthConfig.MinimumLifespan {
 		if idle.RequestCount(h.healthConfig.IdleWindow) < h.healthConfig.IdleThresholdReqPerMin {
 			return healthResult{"idle", http.StatusOK, "low_traffic"}
 		}
 	}
+	// Priority 6: Check degraded state (error rate exceeds configured threshold)
 	if h.healthConfig.DegradedWindow > 0 && h.healthConfig.DegradedErrorPct > 0 {
 		errors, total := degraded.ErrorRate(h.healthConfig.DegradedWindow)
 		if total > 0 {
@@ -168,15 +178,20 @@ func (h *Handler) computeHealthStatus(ctx context.Context) healthResult {
 			}
 		}
 	}
+	// Default: All checks passed, service is healthy
 	return healthResult{"healthy", http.StatusOK, ""}
 }
 
+// writeJSON writes a JSON response with the specified HTTP status code.
+// Sets Content-Type header to application/json and encodes the provided value.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeError writes an error response in the standard error format with code, message,
+// and requestId (correlation ID) if available in request context.
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	corrID := ""
 	if v := r.Context().Value("correlation_id"); v != nil {
@@ -191,6 +206,8 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 	})
 }
 
+// writeServiceError writes a 503 Service Unavailable error response for upstream failures.
+// Logs the underlying error at DEBUG level if logger is available in request context.
 func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	writeError(w, r, http.StatusServiceUnavailable, "UPSTREAM_UNAVAILABLE", "Unable to fetch weather data")
 	if logger, ok := r.Context().Value("logger").(*zap.Logger); ok && logger != nil {
@@ -255,6 +272,8 @@ func (h *Handler) PostTestAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// postTestLoad simulates load by recording the specified number of requests,
+// respecting rate limits if configured. Returns accepted/denied counts and current health state.
 func (h *Handler) postTestLoad(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Count int `json:"count"`
@@ -298,6 +317,8 @@ func (h *Handler) postTestLoad(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// postTestError simulates errors by recording the specified number of error events.
+// Returns current error rate percentage and health state after recording errors.
 func (h *Handler) postTestError(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Count int `json:"count"`
@@ -325,6 +346,8 @@ func (h *Handler) postTestError(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// postTestReset clears all simulated state including overload, degraded, idle tracking,
+// recovery overrides, and shutdown flag. Used for test cleanup.
 func (h *Handler) postTestReset(w http.ResponseWriter, r *http.Request) {
 	overload.Reset()
 	degraded.Reset()
@@ -338,6 +361,8 @@ func (h *Handler) postTestReset(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// postTestShutdown sets the service shutdown flag, triggering graceful shutdown behavior.
+// Health checks will return shutting-down status after this is called.
 func (h *Handler) postTestShutdown(w http.ResponseWriter, r *http.Request) {
 	lifecycle.SetShuttingDown(true)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -347,6 +372,8 @@ func (h *Handler) postTestShutdown(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// postTestPreventClear disables automatic recovery clearing for degraded state testing.
+// Prevents recovery from automatically clearing degraded state when conditions improve.
 func (h *Handler) postTestPreventClear(w http.ResponseWriter, r *http.Request) {
 	degraded.SetRecoveryDisabled(true)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -356,6 +383,8 @@ func (h *Handler) postTestPreventClear(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// postTestFailClear simulates a failed recovery attempt and advances the recovery delay sequence.
+// Returns the next recovery delay time. If recovery sequence is exhausted, sets shutting-down flag.
 func (h *Handler) postTestFailClear(w http.ResponseWriter, r *http.Request) {
 	degraded.SetForceFailNextAttempt(true)
 	resp := map[string]interface{}{
@@ -374,6 +403,8 @@ func (h *Handler) postTestFailClear(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// postTestClear forces successful recovery by clearing degraded state and recovery overrides.
+// Used to manually clear degraded state during testing.
 func (h *Handler) postTestClear(w http.ResponseWriter, r *http.Request) {
 	degraded.Reset()
 	degraded.ClearRecoveryOverrides()

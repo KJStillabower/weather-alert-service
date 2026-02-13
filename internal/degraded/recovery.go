@@ -159,6 +159,9 @@ func GetAndAdvanceNextRecoveryDelay(initial, max time.Duration) (time.Duration, 
 	return delays[idx], true
 }
 
+// fibDelays generates a sequence of Fibonacci-based delay durations up to max.
+// Starts with initial duration scaled to Fibonacci sequence (1, 2, 3, 5, 8, 13...).
+// Used for exponential backoff in recovery attempts.
 func fibDelays(initial, max time.Duration) []time.Duration {
 	const (
 		f0 = 1

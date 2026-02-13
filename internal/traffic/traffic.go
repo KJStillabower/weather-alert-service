@@ -61,18 +61,22 @@ type Tracker struct {
 	deniedTimes  []time.Time
 }
 
+// RecordSuccess records a successful request outcome in the tracker.
 func (t *Tracker) RecordSuccess() {
 	t.recordOutcome(&t.successTimes)
 }
 
+// RecordError records a failed request outcome in the tracker.
 func (t *Tracker) RecordError() {
 	t.recordOutcome(&t.errorTimes)
 }
 
+// RecordDenied records a rate-limit denial (429) in the tracker.
 func (t *Tracker) RecordDenied() {
 	t.recordOutcome(&t.deniedTimes)
 }
 
+// RecordSuccessN records N successful outcomes atomically for synthetic load injection.
 func (t *Tracker) RecordSuccessN(n int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -83,6 +87,7 @@ func (t *Tracker) RecordSuccessN(n int) {
 	t.pruneLocked(now)
 }
 
+// RecordErrorN records N error outcomes atomically for synthetic error injection.
 func (t *Tracker) RecordErrorN(n int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -93,6 +98,7 @@ func (t *Tracker) RecordErrorN(n int) {
 	t.pruneLocked(now)
 }
 
+// recordOutcome appends current timestamp to the specified slice and prunes old entries.
 func (t *Tracker) recordOutcome(slice *[]time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -101,6 +107,7 @@ func (t *Tracker) recordOutcome(slice *[]time.Time) {
 	t.pruneLocked(now)
 }
 
+// RequestCount returns the total number of outcomes (success + error + denied) within the window.
 func (t *Tracker) RequestCount(window time.Duration) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -111,12 +118,15 @@ func (t *Tracker) RequestCount(window time.Duration) int {
 		t.countInWindow(t.deniedTimes, cutoff)
 }
 
+// DenialCount returns the number of rate-limit denials within the window.
 func (t *Tracker) DenialCount(window time.Duration) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.countInWindow(t.deniedTimes, time.Now().Add(-window))
 }
 
+// ErrorRate returns (errorCount, totalCount) within the window.
+// totalCount includes successes and errors only; denials are excluded from error rate calculation.
 func (t *Tracker) ErrorRate(window time.Duration) (errors, total int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -126,6 +136,7 @@ func (t *Tracker) ErrorRate(window time.Duration) (errors, total int) {
 	return errCount, errCount + successCount
 }
 
+// Reset clears all recorded outcomes from the tracker.
 func (t *Tracker) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -134,6 +145,7 @@ func (t *Tracker) Reset() {
 	t.deniedTimes = nil
 }
 
+// countInWindow counts timestamps that are not before the cutoff time.
 func (t *Tracker) countInWindow(times []time.Time, cutoff time.Time) int {
 	n := 0
 	for _, ts := range times {
@@ -144,6 +156,8 @@ func (t *Tracker) countInWindow(times []time.Time, cutoff time.Time) int {
 	return n
 }
 
+// pruneLocked removes timestamps older than maxAge (5 minutes) from all outcome slices.
+// Must be called with mutex held.
 func (t *Tracker) pruneLocked(now time.Time) {
 	maxAge := 5 * time.Minute
 	cutoff := now.Add(-maxAge)

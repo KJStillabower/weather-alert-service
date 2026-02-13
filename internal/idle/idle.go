@@ -60,6 +60,8 @@ func (t *Tracker) Reset() {
 	t.times = nil
 }
 
+// pruneLocked removes request timestamps older than 30 minutes to prevent unbounded growth.
+// Must be called with mutex held.
 func (t *Tracker) pruneLocked(now time.Time) {
 	cutoff := now.Add(-30 * time.Minute)
 	i := 0

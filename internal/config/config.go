@@ -249,6 +249,8 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// parseDuration parses a duration string and returns defaultVal if parsing fails or result is <= 0.
+// Used for parsing duration fields from YAML config with safe fallback to defaults.
 func parseDuration(s string, defaultVal time.Duration) time.Duration {
 	d := parseDurationOrZero(s, defaultVal)
 	if d <= 0 {
@@ -257,6 +259,8 @@ func parseDuration(s string, defaultVal time.Duration) time.Duration {
 	return d
 }
 
+// parseDurationOrZero parses a duration string, returning defaultVal on empty string or parse error.
+// Returns zero or negative durations as-is (caller should handle fallback).
 func parseDurationOrZero(s string, defaultVal time.Duration) time.Duration {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -269,6 +273,9 @@ func parseDurationOrZero(s string, defaultVal time.Duration) time.Duration {
 	return d
 }
 
+// validate performs post-load validation of configuration values.
+// Ensures WeatherAPITimeout is positive, RequestTimeout >= WeatherAPITimeout,
+// and CacheBackend is a valid value. Auto-adjusts RequestTimeout if needed.
 func validate(cfg *Config) error {
 	if cfg.WeatherAPITimeout <= 0 {
 		return fmt.Errorf("WEATHER_API_TIMEOUT must be positive")

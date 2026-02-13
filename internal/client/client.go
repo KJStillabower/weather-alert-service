@@ -17,18 +17,26 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/observability"
 )
 
+// WeatherClient defines the interface for weather data providers.
+// Implementations must provide weather data retrieval and API key validation.
 type WeatherClient interface {
 	GetCurrentWeather(ctx context.Context, location string) (models.WeatherData, error)
 	ValidateAPIKey(ctx context.Context) error
 }
 
 var (
-	ErrInvalidAPIKey   = errors.New("invalid API key")
+	// ErrInvalidAPIKey indicates the API key is invalid, missing, or not activated.
+	ErrInvalidAPIKey = errors.New("invalid API key")
+	// ErrLocationNotFound indicates the requested location was not found by the upstream API.
 	ErrLocationNotFound = errors.New("location not found")
+	// ErrUpstreamFailure indicates a transient upstream API failure (5xx errors, timeouts).
 	ErrUpstreamFailure = errors.New("upstream failure")
-	ErrRateLimited     = errors.New("rate limited")
+	// ErrRateLimited indicates the upstream API rate limit was exceeded (429).
+	ErrRateLimited = errors.New("rate limited")
 )
 
+// OpenWeatherClient implements WeatherClient for OpenWeatherMap API.
+// Provides retry logic with exponential backoff for transient failures.
 type OpenWeatherClient struct {
 	apiKey        string
 	apiURL        string
@@ -39,10 +47,14 @@ type OpenWeatherClient struct {
 	retryMaxDelay  time.Duration
 }
 
+// NewOpenWeatherClient creates a new OpenWeatherClient with default retry settings
+// (3 attempts, 100ms base delay, 2s max delay).
 func NewOpenWeatherClient(apiKey, apiURL string, timeout time.Duration) (*OpenWeatherClient, error) {
 	return NewOpenWeatherClientWithRetry(apiKey, apiURL, timeout, 3, 100*time.Millisecond, 2*time.Second)
 }
 
+// NewOpenWeatherClientWithRetry creates a new OpenWeatherClient with configurable retry settings.
+// Validates API key format (non-empty, minimum 10 characters) before creating client.
 func NewOpenWeatherClientWithRetry(apiKey, apiURL string, timeout time.Duration, retryAttempts int, retryBaseDelay, retryMaxDelay time.Duration) (*OpenWeatherClient, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("%w: API key is required", ErrInvalidAPIKey)
@@ -79,6 +91,9 @@ type openWeatherResponse struct {
 	Name string `json:"name"`
 }
 
+// GetCurrentWeather retrieves weather data for the specified location with retry logic.
+// Retries on transient failures (timeouts, rate limits, 5xx errors) using exponential backoff.
+// Returns immediately on non-retryable errors (4xx except 429). Respects context cancellation.
 func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location string) (models.WeatherData, error) {
 	var lastErr error
 	
@@ -107,6 +122,9 @@ func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location stri
 	return models.WeatherData{}, fmt.Errorf("exhausted retries: %w", lastErr)
 }
 
+// callAPI executes a single API request to fetch weather data for the location.
+// Propagates correlation ID from context, records metrics, and handles HTTP errors.
+// Returns parsed weather data on success, or error on failure.
 func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (models.WeatherData, error) {
 	start := time.Now()
 	
@@ -159,6 +177,9 @@ func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (model
 	return c.mapResponse(apiResp, location), nil
 }
 
+// isRetryable determines if an error should trigger a retry attempt.
+// Returns true for transient failures: rate limits (429), upstream failures (5xx),
+// timeouts, and context cancellations. Returns false for client errors (4xx except 429).
 func (c *OpenWeatherClient) isRetryable(err error) bool {
 	if err == nil {
 		return false
@@ -179,6 +200,9 @@ func (c *OpenWeatherClient) isRetryable(err error) bool {
 	return false
 }
 
+// calculateBackoff calculates exponential backoff delay with jitter for retry attempts.
+// Delay doubles with each attempt (exponential), capped at retryMaxDelay, with 10% random jitter
+// to prevent thundering herd problems.
 func (c *OpenWeatherClient) calculateBackoff(attempt int) time.Duration {
 	delay := float64(c.retryBaseDelay) * math.Pow(2, float64(attempt-1))
 	if delay > float64(c.retryMaxDelay) {
@@ -189,6 +213,8 @@ func (c *OpenWeatherClient) calculateBackoff(attempt int) time.Duration {
 	return time.Duration(delay + jitter)
 }
 
+// buildRequest constructs an HTTP GET request to the OpenWeatherMap API with location,
+// API key, and units=metric query parameters. Sets Accept header for JSON response.
 func (c *OpenWeatherClient) buildRequest(ctx context.Context, location string) (*http.Request, error) {
 	baseURL, err := url.Parse(c.apiURL)
 	if err != nil {
@@ -210,6 +236,9 @@ func (c *OpenWeatherClient) buildRequest(ctx context.Context, location string) (
 	return req, nil
 }
 
+// handleErrorResponse maps HTTP status codes to domain errors.
+// 401 -> ErrInvalidAPIKey, 404 -> ErrLocationNotFound, 429 -> ErrRateLimited,
+// 5xx -> ErrUpstreamFailure. Returns nil for 2xx status codes.
 func (c *OpenWeatherClient) handleErrorResponse(resp *http.Response) error {
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
@@ -229,6 +258,9 @@ func (c *OpenWeatherClient) handleErrorResponse(resp *http.Response) error {
 	return nil
 }
 
+// mapResponse transforms OpenWeatherMap API response format to WeatherData model.
+// Uses description if available, otherwise falls back to main condition. Uses API name
+// if provided, otherwise uses requested location. Normalizes location to lowercase.
 func (c *OpenWeatherClient) mapResponse(apiResp openWeatherResponse, location string) models.WeatherData {
 	conditions := ""
 	if len(apiResp.Weather) > 0 {
@@ -253,6 +285,8 @@ func (c *OpenWeatherClient) mapResponse(apiResp openWeatherResponse, location st
 	}
 }
 
+// extractCorrelationID extracts correlation ID from request context if present.
+// Returns empty string if correlation ID is not found or context is invalid.
 func extractCorrelationID(ctx context.Context) string {
 	if corrIDVal := ctx.Value("correlation_id"); corrIDVal != nil {
 		if corrID, ok := corrIDVal.(string); ok {
@@ -262,6 +296,8 @@ func extractCorrelationID(ctx context.Context) string {
 	return ""
 }
 
+// statusLabel converts HTTP status code to a label for metrics (success, rate_limited,
+// client_error, server_error, error). Used for Prometheus metric labeling.
 func statusLabel(statusCode int) string {
 	if statusCode >= 200 && statusCode < 300 {
 		return "success"
@@ -278,6 +314,9 @@ func statusLabel(statusCode int) string {
 	return "error"
 }
 
+// ValidateAPIKey validates the API key by making a test request to the upstream API.
+// Returns ErrInvalidAPIKey if API key is invalid (401), or error for other failures.
+// Uses a short timeout (5s) to avoid blocking startup for extended periods.
 func (c *OpenWeatherClient) ValidateAPIKey(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

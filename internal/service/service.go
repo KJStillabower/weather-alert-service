@@ -14,12 +14,16 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/observability"
 )
 
+// WeatherService orchestrates weather data retrieval using cache-aside pattern
+// with upstream API fallback. Implements the service layer business logic.
 type WeatherService struct {
 	client client.WeatherClient
 	cache  cache.Cache
 	ttl    time.Duration
 }
 
+// NewWeatherService creates a new WeatherService with the provided dependencies.
+// TTL specifies the cache expiration duration for weather data.
 func NewWeatherService(client client.WeatherClient, cache cache.Cache, ttl time.Duration) *WeatherService {
 	return &WeatherService{
 		client: client,
@@ -28,6 +32,8 @@ func NewWeatherService(client client.WeatherClient, cache cache.Cache, ttl time.
 	}
 }
 
+// loggerFromContext extracts a zap.Logger from request context if present.
+// Returns nil if logger is not found or context is invalid.
 func loggerFromContext(ctx context.Context) *zap.Logger {
 	if v := ctx.Value("logger"); v != nil {
 		if l, ok := v.(*zap.Logger); ok && l != nil {
@@ -37,6 +43,9 @@ func loggerFromContext(ctx context.Context) *zap.Logger {
 	return nil
 }
 
+// GetWeather retrieves weather data for the specified location using cache-aside pattern.
+// Checks cache first, falls back to upstream API on cache miss, and populates cache on success.
+// Returns cached data if available, otherwise fetches from upstream and caches the result.
 func (s *WeatherService) GetWeather(ctx context.Context, location string) (models.WeatherData, error) {
 	key := normalizeLocation(location)
 	start := time.Now()
@@ -66,6 +75,8 @@ func (s *WeatherService) GetWeather(ctx context.Context, location string) (model
 	return data, nil
 }
 
+// normalizeLocation normalizes location strings by trimming whitespace and converting to lowercase.
+// Used to ensure consistent cache keys and API requests regardless of input format.
 func normalizeLocation(location string) string {
 	return strings.ToLower(strings.TrimSpace(location))
 }
