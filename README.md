@@ -37,7 +37,7 @@ export ENV_NAME=dev_localcache
 - **Memcached** for caching layer
 - **bash** (for test script)
 
-If you don't know how to install memcached, you can use a local cache to facilitate quicker start. Just reference the ```backend: "in_memory"``` in the config (See: `config/dev_localcache.yaml`)
+Memcached is **strongly** recommended for production usage.  The implementation supports the use of a local in-memory cache to facilitate quicker start (e.g. testing or integration). Set ```backend: "in_memory"``` in the config (See: `config/dev_localcache.yaml`). The in-memory backend is not thread-safe and is intended for single-instance, dev/test use only; **production deployments must use memcached** for thread-safe, shared caching.  
 
 If you have a docker or kubernettes environment, there are build scripts in the [samples/containers]() location
 
@@ -454,7 +454,7 @@ Structured logging (zap) with JSON output and ISO8601 timestamps. Logs are writt
 | File | Purpose |
 |------|---------|
 | `config/dev.yaml` | Development (memcached cache, testing_mode). Requires `./test-service.sh start_cache`. |
-| `config/dev_localcache.yaml` | Development (in-memory cache). No memcached; use when memcached unavailable. |
+| `config/dev_localcache.yaml` | Development (in-memory cache). No memcached; for local/testing/integration when memcached unavailable. Not thread-safe; production must use memcached. |
 | `config/prod.yaml` | Production config |
 | `config/secrets.yaml` | API key only (gitignored) |
 
@@ -566,7 +566,7 @@ echo $WEATHER_API_KEY
 
 - Check cache TTL in config (`cache.ttl`)
 - Verify cache metrics in `/metrics` endpoint (`cacheHitsTotal`)
-- **in_memory:** Data lost on restart; single-instance only
+- **in_memory:** Data lost on restart; single-instance only. Not thread-safe (concurrent access risks); intended for testing and integration. For production, use memcached for a thread-safe, shared cache.
 - **memcached:** Run memcached (e.g. `./test-service.sh start_cache`), ensure `checks.cache=healthy` in `/health`
 
 ## Development
