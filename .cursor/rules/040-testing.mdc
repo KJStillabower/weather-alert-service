@@ -155,7 +155,7 @@ func TestHandler_GetWeather_Success(t *testing.T) {
 
 ## Reliability Testing
 
-**Per `060-reliability.mdc`, test reliability patterns:**
+**Reliability testing (see `060-reliability.mdc` for patterns):**
 
 **Required tests:**
 - Timeout propagation and context cancellation
@@ -183,7 +183,7 @@ func TestClient_GetCurrentWeather_Timeout(t *testing.T) {
 
 ## API Contract Testing
 
-**Per `070-api-contract.mdc`, validate contract compliance:**
+**API contract testing (see `070-api-contract.mdc` for contract details):**
 
 **Required tests:**
 - `GET /weather/{location}` success response schema matches contract

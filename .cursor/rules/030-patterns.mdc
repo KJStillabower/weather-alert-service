@@ -227,13 +227,7 @@ All runtime behavior should be config-driven via env vars.
 
 ## Logging and Metrics
 
-Follow `050-observability.mdc` and `090-security.mdc`.
-
-### Rules
-- Structured logs only.
-- Log decisions, boundaries, and failures; avoid routine success logs.
-- Never log secrets or credentials.
-- Emit metrics for all critical boundaries.
+See `050-observability.mdc` for comprehensive logging and metrics guidance.
 
 ## Startup and Shutdown
 
@@ -260,7 +254,7 @@ Follow standard Go style and naming.
 
 ## Testing
 
-Follow `040-testing.mdc` for service and handler testing patterns and requirements.
+See `040-testing.mdc` for service and handler testing patterns and requirements.
 
 ## Avoid
 

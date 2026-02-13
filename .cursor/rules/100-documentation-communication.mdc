@@ -181,50 +181,12 @@ git commit -m "Add cache and fix bug and update docs"
 ## Pre-Commit Checklist
 
 **Before committing, verify:**
-- [ ] No secrets or credentials in code (090-security.mdc)
+- [ ] No secrets or credentials in code (020-security.mdc)
 - [ ] No `.env` files or sensitive data staged
 - [ ] Commit message follows format
 - [ ] Changes are atomic and logical
 - [ ] Code compiles/builds successfully
 - [ ] Tests pass (if applicable)
-
-## Branching Strategy
-
-**For this take-home project:**
-- Use `main` branch for all work
-- No feature branches required unless explicitly requested
-- Keep history clean and linear when possible
-
-**If branching becomes necessary:**
-- Use descriptive branch names: `feat/cache-implementation`
-- Keep branches short-lived
-- Rebase before merging to maintain clean history
-
-## Commit Frequency
-
-**Commit often, but meaningfully:**
-- After completing a logical unit of work
-- After fixing a bug
-- After adding a feature
-- After significant refactoring
-
-**Avoid:**
-- Committing broken code
-- Committing work-in-progress with "WIP" messages
-- Squashing unrelated changes into one commit
-
-## Security Considerations
-
-**Per 090-security.mdc, never commit:**
-- API keys or credentials
-- `.env` files
-- Secrets or sensitive configuration
-- Hardcoded passwords
-
-**If secrets are accidentally committed:**
-- Rotate credentials immediately
-- Remove from git history
-- Never force-push without coordination
 
 ## README Requirements
 
@@ -251,40 +213,6 @@ Minimum sections:
 - Keep examples current with actual endpoint behavior.
 - Prefer concrete examples over long prose.
 - Document assumptions and trade-offs explicitly.
-
-## Configuration Documentation
-
-All config keys must be documented in one place.
-
-For each key include:
-- Name
-- Required/optional
-- Default value (if any)
-- Description
-- Example value
-
-Example table:
-
-```markdown
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| WEATHER_API_KEY | yes | - | API key for weather provider |
-| REQUEST_TIMEOUT | no | 3s | End-to-end request timeout |
-```
-
-## API Documentation
-
-For each endpoint document:
-- Method and path
-- Path/query params
-- Success response example
-- Error response example
-- Status codes
-
-### Rules
-- Match `070-api-contract.mdc` schemas and error shape.
-- Keep field names and casing consistent with implementation.
-- Include at least one realistic `curl` example per endpoint.
 
 ## In-Code Documentation
 

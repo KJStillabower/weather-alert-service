@@ -15,6 +15,8 @@
 - Removed `version` and `lastUpdated` from all rule frontmatter (Git tracks changes)
 - Streamlined `001-preserve-existing.mdc` (condensed verbose sections, replaced table with Do/Don't format)
 - Streamlined `010-role.mdc` (removed redundant Communication Style section, condensed verbose sections)
+- Fixed 6 incorrect cross-references (`090-security.mdc` → `020-security.mdc`)
+- Reduced redundant "Per/Follow" directives, changed to navigational "See" references
 - Updated `docs/About.md` to reflect new rule structure
 
 **Remaining:**
@@ -118,7 +120,7 @@ Initial rule set had 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 - [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc` updated)
 - [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules)
 - [x] Total rule lines reduced (~1935 lines from ~2174, ~11% reduction; streamlined 001 and 010, could reduce more by making remaining rules context-specific)
-- [ ] Cross-references minimized or removed
+- [x] Cross-references minimized or removed (fixed incorrect refs, reduced redundant "Per/Follow" directives)
 - [x] Documentation updated if rule structure changes (`docs/About.md` updated)
 
 ## References

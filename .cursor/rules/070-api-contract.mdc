@@ -146,15 +146,6 @@ Document in `README.md`:
 - error codes and meanings
 - sample curl commands
 
-## Testing Requirements
-
-Per `040-testing.mdc`, minimum API contract tests:
-- `GET /weather/{location}` success schema validation
-- invalid location returns `400` with error shape
-- upstream failure maps to `503` with stable error code
-- `GET /health` status and schema validation
-- `GET /metrics` serves Prometheus format
-
 ## Avoid
 
 - Undocumented response fields
