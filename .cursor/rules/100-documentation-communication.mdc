@@ -1,11 +1,33 @@
 ---
-description: Git commit standards, commit messages, trailers, and version control practices
+description: Communication standards, git commit practices, and documentation requirements
 alwaysApply: true
-version: 1.0.3
-lastUpdated: 2026-02-11
+version: 2.0.0
+lastUpdated: 2026-02-12
 ---
 
-# Change Control Rules
+# Documentation and Communication Rules
+
+## Core Principle
+
+Professional communication standards apply to commits, code, and documentation. Documentation must help a reviewer quickly understand, run, validate, and reason about the system.
+
+## Professional Communication
+
+**No emojis** in commits, comments, or professional output.
+
+<examples>
+❌ 🔧 Fix auth issues ✨
+✅ Fix authentication middleware timeout handling
+</examples>
+
+**Commit messages:** Concise, technically descriptive. Explain WHAT changed and WHY. Use proper technical terminology.
+
+**Response style:** Direct, actionable, no preamble. During work: minimal commentary, focus on action. After significant work: concise summary with file:line references.
+
+<examples>
+❌ "I'm going to try to fix this by exploring different approaches..."
+✅ [Fix first, then report] "Fixed authentication timeout in auth.ts:234 by increasing session expiry window"
+</examples>
 
 ## Commit Message Format
 
@@ -31,6 +53,9 @@ lastUpdated: 2026-02-11
 - Provide context or rationale
 - Reference related issues or decisions
 - Separate from subject with blank line
+- Concise, technically descriptive
+- Use proper technical terminology
+- No emojis
 
 **Examples:**
 
@@ -85,12 +110,6 @@ change: Add metrics  # Use 'feat' instead
 
 ## Commit Message Content
 
-**Per 100-communication.mdc:**
-- Concise, technically descriptive
-- Explain WHAT changed and WHY
-- Use proper technical terminology
-- No emojis
-
 **What to include:**
 - What component/feature changed
 - Why the change was necessary
@@ -118,7 +137,6 @@ If the model is not known, use `Cursor Auto`.
 ```bash
 Co-authored-by: Cursor Auto <ai@cursor.com>
 ```
-
 
 **Fixes/Closes:** Reference issues:
 ```bash
@@ -210,3 +228,108 @@ git commit -m "Add cache and fix bug and update docs"
 - Remove from git history
 - Never force-push without coordination
 
+## README Requirements
+
+`README.md` is the primary operator and reviewer guide.
+
+Minimum sections:
+- Project overview and purpose
+- Architecture summary (high-level flow)
+- Prerequisites and dependencies
+- Configuration (env vars, defaults, required values)
+- Run instructions (local)
+- Test instructions
+- API endpoint summary with examples
+- Observability and metrics notes
+- Reliability behavior notes (timeouts/retries/rate limits)
+- Security notes (secrets handling)
+- Limitations and future improvements
+
+## README Quality Rules
+
+- Keep startup instructions copy/paste ready.
+- Include exact commands for build/run/test.
+- Use short, task-oriented headings.
+- Keep examples current with actual endpoint behavior.
+- Prefer concrete examples over long prose.
+- Document assumptions and trade-offs explicitly.
+
+## Configuration Documentation
+
+All config keys must be documented in one place.
+
+For each key include:
+- Name
+- Required/optional
+- Default value (if any)
+- Description
+- Example value
+
+Example table:
+
+```markdown
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| WEATHER_API_KEY | yes | - | API key for weather provider |
+| REQUEST_TIMEOUT | no | 3s | End-to-end request timeout |
+```
+
+## API Documentation
+
+For each endpoint document:
+- Method and path
+- Path/query params
+- Success response example
+- Error response example
+- Status codes
+
+### Rules
+- Match `070-api-contract.mdc` schemas and error shape.
+- Keep field names and casing consistent with implementation.
+- Include at least one realistic `curl` example per endpoint.
+
+## In-Code Documentation
+
+Use comments where they reduce ambiguity.
+
+### Rules
+- Add comments for exported types/functions.
+- Document non-obvious decision points and boundary behavior.
+- Explain reliability decisions (timeouts/retries/fallbacks) where implemented.
+- Avoid redundant comments that restate the code.
+
+## Observability Documentation
+
+Document operational interpretation, not just implementation.
+
+### Rules
+- List key metrics and what they indicate.
+- Include alert examples and intent (`prometheus.yaml`, `alertmanager.yaml`).
+- Describe how to use correlation/request IDs during troubleshooting.
+
+## Change Documentation
+
+When behavior changes materially:
+- Update README and relevant rule references in same change.
+- Update examples if response shapes or config changed.
+- Keep docs and code in sync before commit.
+
+## Keep Docs Verifiable
+
+Documentation should be testable by a reviewer.
+
+### Rules
+- Commands should run as written.
+- Endpoint examples should match implemented routes.
+- Env var docs should match actual config loader.
+- Remove stale sections instead of leaving ambiguous notes.
+
+## Avoid
+
+- Placeholder TODO docs in committed README
+- Outdated run/test commands
+- Undocumented breaking contract changes
+- Duplicated docs that drift across files
+- Emojis in commits, comments, or professional output
+- Committing broken code or work-in-progress
+- Vague commit messages without context

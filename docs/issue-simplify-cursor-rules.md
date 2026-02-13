@@ -2,17 +2,31 @@
 
 **Labels:** maintenance, technical-debt
 
+## Progress
+
+✅ **Completed:**
+- Consolidated `030-service-pattern.mdc` + `080-go-patterns.mdc` → `030-patterns.mdc`
+- Consolidated `100-communication.mdc` + `021-change-control.mdc` + `101-documentation.mdc` → `100-documentation-communication.mdc`
+- Removed `020-rule-standards.mdc` (unnecessary meta-rule)
+- Updated `040-testing.mdc` to use `globs: **/*_test.go` instead of `alwaysApply: true`
+- Updated `docs/About.md` to reflect new rule structure
+
+**Remaining:**
+- Reduce `alwaysApply: true` scope (currently all 12 files)
+- Simplify version tracking meta-rules
+
 ## Summary
 
 Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, creating high token overhead, cross-reference complexity, and maintenance burden. Propose consolidation and simplification.
 
 ## Current State
 
-- **14 rule files**, all `alwaysApply: true` (~2174 lines total)
+- **11 rule files** (reduced from 14), most `alwaysApply: true` (~2174 lines total)
 - **Cross-references:** Rules reference each other (e.g., "per 040-testing.mdc", "see 090-security.mdc")
-- **Overlap:** `030-service-pattern.mdc` and `080-go-patterns.mdc` both cover Go patterns, handlers, dependency injection
-- **Meta-rules:** `020-rule-standards.mdc` adds version tracking overhead to every file
-- **Token cost:** ~8700 tokens just for rules (2174 lines × ~4 tokens/line)
+- **Consolidated:** `030-patterns.mdc` (merged 030+080), `100-documentation-communication.mdc` (merged 100+021+101)
+- **Context-specific:** `040-testing.mdc` now uses `globs: **/*_test.go` instead of `alwaysApply: true`
+- **Removed:** `020-rule-standards.mdc` (unnecessary meta-rule)
+- **Token cost:** Reduced baseline overhead with context-specific rules
 
 ## Problems
 
@@ -27,10 +41,10 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 ### Option 1: Consolidate Overlapping Rules
 
 **Merge:**
-- `030-service-pattern.mdc` + `080-go-patterns.mdc` → single `030-patterns.mdc` (remove duplicate handler/DI/error handling)
-- `100-communication.mdc` + `021-change-control.mdc` → single `git-commits.mdc` (commit messages are communication)
+- ✅ `030-service-pattern.mdc` + `080-go-patterns.mdc` → single `030-patterns.mdc` (remove duplicate handler/DI/error handling) **COMPLETED**
+- ✅ `100-communication.mdc` + `021-change-control.mdc` + `101-documentation.mdc` → single `100-documentation-communication.mdc` (commit messages are communication and documentation) **COMPLETED**
 
-**Result:** 14 → 12 files
+**Result:** 14 → 12 files (completed)
 
 ### Option 2: Reduce Always-Apply Scope
 
@@ -40,17 +54,17 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 - `022-preserve-existing.mdc` - Critical safety rule
 
 **Make context-specific:**
-- `040-testing.mdc` - Only when editing `*_test.go` files (`globs: **/*_test.go`)
+- ✅ `040-testing.mdc` - Only when editing `*_test.go` files (`globs: **/*_test.go`) **COMPLETED**
 - `050-observability.mdc` - Only when editing observability code (`globs: **/observability/**`)
 - `070-api-contract.mdc` - Only when editing handlers (`globs: **/http/**`)
 - `090-security.mdc` - Only when editing code that touches secrets/config
 
-**Result:** 3 always-apply + 11 context-specific = lower baseline overhead
+**Result:** 3 always-apply + context-specific = lower baseline overhead
 
 ### Option 3: Remove Meta-Rules
 
 **Remove or simplify:**
-- `020-rule-standards.mdc` - Version tracking adds overhead; rules are living docs, not APIs
+- ✅ `020-rule-standards.mdc` - Version tracking adds overhead; rules are living docs, not APIs **REMOVED**
 - Keep frontmatter minimal: `description` only; drop `version`, `lastUpdated` unless needed
 
 **Result:** Less maintenance, simpler structure
@@ -74,22 +88,22 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 **Combine Options 1 + 2 + 3:**
 
-1. **Merge overlapping rules** (14 → 12 files)
-2. **Reduce always-apply** (3 core + 9 context-specific)
-3. **Simplify meta-rules** (drop version tracking overhead)
-4. **Extract verbose examples** (keep rules concise)
+1. ✅ **Merge overlapping rules** (14 → 11 files) **COMPLETED**
+2. 🔄 **Reduce always-apply** (3 core + context-specific) **IN PROGRESS** - `040-testing.mdc` updated
+3. ✅ **Simplify meta-rules** (drop version tracking overhead) **COMPLETED** - `020-rule-standards.mdc` removed
+4. [ ] **Extract verbose examples** (keep rules concise)
 
 **Target:** ~800-1000 lines total, 3 always-apply rules, clearer boundaries
 
 ## Acceptance Criteria
 
-- [ ] Overlapping rules consolidated (030+080, 100+021)
-- [ ] Only 3 core rules marked `alwaysApply: true`
-- [ ] Context-specific rules use `globs` for targeted loading
-- [ ] Version tracking removed or simplified
+- [x] Overlapping rules consolidated (030+080 → `030-patterns.mdc`, 100+021+101 → `100-documentation-communication.mdc`)
+- [ ] Only 3 core rules marked `alwaysApply: true` (currently 10 still use `alwaysApply`)
+- [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc` updated)
+- [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed)
 - [ ] Total rule lines reduced by ~40-50%
 - [ ] Cross-references minimized or removed
-- [ ] Documentation updated if rule structure changes
+- [x] Documentation updated if rule structure changes (`docs/About.md` updated)
 
 ## References
 
@@ -109,22 +123,19 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 #### External References by File
 
 ##### docs/About.md
-**Lines 71-83:** Lists all 14 rules in a table:
+**Lines 71-82:** Lists all 12 rules in a table (updated):
 - `000-goal.mdc`
 - `010-role.mdc`
 - `020-rule-standards.mdc`
-- `021-change-control.mdc`
-- `030-service-pattern.mdc`
+- `030-patterns.mdc` (consolidated from 030+080)
 - `040-testing.mdc`
 - `050-observability.mdc`
 - `060-reliability.mdc`
 - `070-api-contract.mdc`
-- `080-go-patterns.mdc`
 - `090-security.mdc`
-- `100-communication.mdc`
-- `101-documentation.mdc`
+- `100-documentation-communication.mdc` (consolidated from 100+021+101)
 
-**Impact:** If rules are consolidated/renamed, this table needs updating.
+**Impact:** ✅ Updated to reflect consolidated rules.
 
 ##### docs/observability.md
 **Line 114:** `see 090-security.mdc` (inline reference)
@@ -151,14 +162,12 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 Rules reference each other extensively:
 - `010-role.mdc` → `000-goal.mdc`, `090-security.mdc`
-- `030-service-pattern.mdc` → `000-goal.mdc`, `040-testing.mdc`
+- `030-patterns.mdc` → `000-goal.mdc`, `040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc`, `090-security.mdc` (consolidated from 030+080)
 - `040-testing.mdc` → `060-reliability.mdc`, `070-api-contract.mdc`
 - `050-observability.mdc` → `000-goal.mdc`, `090-security.mdc`
 - `060-reliability.mdc` → `040-testing.mdc`, `050-observability.mdc`
 - `070-api-contract.mdc` → `040-testing.mdc`
-- `080-go-patterns.mdc` → `070-api-contract.mdc`, `050-observability.mdc`, `090-security.mdc`, `040-testing.mdc`
-- `021-change-control.mdc` → `100-communication.mdc`, `090-security.mdc`, `050-observability.mdc`, `060-reliability.mdc`
-- `101-documentation.mdc` → `070-api-contract.mdc`
+- `100-documentation-communication.mdc` → `090-security.mdc`, `050-observability.mdc`, `060-reliability.mdc`, `070-api-contract.mdc` (consolidated from 100+021+101)
 
 **Impact:** High - consolidation will require updating these cross-references or removing them.
 
