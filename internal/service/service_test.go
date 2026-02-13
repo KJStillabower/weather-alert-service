@@ -24,8 +24,9 @@ func (m *mockWeatherClient) ValidateAPIKey(ctx context.Context) error {
 }
 
 type mockCache struct {
-	data map[string]models.WeatherData
-	err  error
+	data      map[string]models.WeatherData
+	staleData map[string]models.WeatherData // Data that's expired but available for stale retrieval
+	err       error
 }
 
 func (m *mockCache) Get(ctx context.Context, key string) (models.WeatherData, bool, error) {
@@ -34,6 +35,23 @@ func (m *mockCache) Get(ctx context.Context, key string) (models.WeatherData, bo
 	}
 	val, ok := m.data[key]
 	return val, ok, nil
+}
+
+func (m *mockCache) GetStale(ctx context.Context, key string, maxStaleAge time.Duration) (models.WeatherData, bool, error) {
+	if m.err != nil {
+		return models.WeatherData{}, false, m.err
+	}
+	// Check stale data first (expired but within maxStaleAge)
+	if m.staleData != nil {
+		if stale, ok := m.staleData[key]; ok {
+			age := time.Since(stale.Timestamp)
+			if age <= maxStaleAge {
+				return stale, true, nil
+			}
+		}
+	}
+	// Fallback to regular data
+	return m.Get(ctx, key)
 }
 
 func (m *mockCache) Set(ctx context.Context, key string, value models.WeatherData, ttl time.Duration) error {
@@ -106,7 +124,7 @@ func TestWeatherService_GetWeather_CacheHit(t *testing.T) {
 		},
 	}
 
-	svc := NewWeatherService(nil, mockCache, 5*time.Minute)
+	svc := NewWeatherService(nil, mockCache, 5*time.Minute, 0, false, 0)
 
 	// Act: Request weather for a location that exists in cache
 	got, err := svc.GetWeather(context.Background(), "seattle")
@@ -145,7 +163,7 @@ func TestWeatherService_GetWeather_CacheMiss_UpstreamSuccess(t *testing.T) {
 		data: make(map[string]models.WeatherData),
 	}
 
-	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	// Act: Request weather for a location not in cache
 	got, err := svc.GetWeather(context.Background(), "portland")
@@ -181,7 +199,7 @@ func TestWeatherService_GetWeather_UpstreamFailure(t *testing.T) {
 		data: make(map[string]models.WeatherData),
 	}
 
-	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	// Act: Request weather when upstream fails
 	_, err := svc.GetWeather(context.Background(), "seattle")
@@ -208,7 +226,7 @@ func TestWeatherService_GetWeather_CacheGetError(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle"},
 	}
 
-	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	// Act: Request weather when cache read fails
 	got, err := svc.GetWeather(context.Background(), "seattle")
@@ -220,5 +238,64 @@ func TestWeatherService_GetWeather_CacheGetError(t *testing.T) {
 
 	if got.Location != "seattle" {
 		t.Errorf("GetWeather().Location = %q, want seattle", got.Location)
+	}
+}
+
+// TestWeatherService_GetWeather_StaleCacheFallback verifies that stale cache is served when upstream fails.
+func TestWeatherService_GetWeather_StaleCacheFallback(t *testing.T) {
+	staleData := models.WeatherData{
+		Location:    "seattle",
+		Temperature: 10.0,
+		Conditions:  "Clear",
+		Humidity:    60,
+		WindSpeed:   3.0,
+		Timestamp:   time.Now().Add(-30 * time.Minute), // 30 min old
+	}
+
+	mockCache := &mockCache{
+		staleData: map[string]models.WeatherData{
+			"seattle": staleData,
+		},
+	}
+	mockClient := &mockWeatherClient{
+		err: errors.New("upstream failure"),
+	}
+
+	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute, 1*time.Hour, false, 0) // stale TTL 1h
+
+	got, err := svc.GetWeather(context.Background(), "seattle")
+	if err != nil {
+		t.Fatalf("GetWeather() error = %v, want nil (stale cache served)", err)
+	}
+	if !got.Stale {
+		t.Error("GetWeather().Stale = false, want true")
+	}
+	if got.Location != staleData.Location {
+		t.Errorf("GetWeather().Location = %q, want %q", got.Location, staleData.Location)
+	}
+}
+
+// TestWeatherService_GetWeather_StaleCacheDisabled verifies that stale cache is not used when disabled.
+func TestWeatherService_GetWeather_StaleCacheDisabled(t *testing.T) {
+	staleData := models.WeatherData{
+		Location:    "seattle",
+		Temperature: 10.0,
+		Timestamp:   time.Now().Add(-30 * time.Minute),
+	}
+
+	mockCache := &mockCache{
+		staleData: map[string]models.WeatherData{
+			"seattle": staleData,
+		},
+	}
+	mockClient := &mockWeatherClient{
+		err: errors.New("upstream failure"),
+	}
+
+	svc := NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0) // stale disabled
+
+	_, err := svc.GetWeather(context.Background(), "seattle")
+	if err == nil {
+		t.Fatal("GetWeather() error = nil, want error (stale cache disabled)")
 	}
 }

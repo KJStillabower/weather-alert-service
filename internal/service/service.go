@@ -20,17 +20,27 @@ type WeatherService struct {
 	client          client.WeatherClient
 	cache           cache.Cache
 	ttl             time.Duration
-	stampedeTracker *stampedeTracker 
+	staleCacheTTL   time.Duration // Maximum age for stale cache fallback (0 = disabled)
+	stampedeTracker *stampedeTracker
+	coalescer       *requestCoalescer // Optional request coalescing (nil if disabled)
 }
 
 // NewWeatherService creates a new WeatherService with the provided dependencies.
 // TTL specifies the cache expiration duration for weather data.
-func NewWeatherService(client client.WeatherClient, cache cache.Cache, ttl time.Duration) *WeatherService {
+// staleCacheTTL specifies maximum age for stale cache fallback (0 = disabled).
+// coalesceEnabled and coalesceTimeout configure request coalescing (disabled if timeout 0).
+func NewWeatherService(client client.WeatherClient, cache cache.Cache, ttl time.Duration, staleCacheTTL time.Duration, coalesceEnabled bool, coalesceTimeout time.Duration) *WeatherService {
+	var coalescer *requestCoalescer
+	if coalesceEnabled && coalesceTimeout > 0 {
+		coalescer = newRequestCoalescer(coalesceTimeout)
+	}
 	return &WeatherService{
 		client:          client,
 		cache:           cache,
 		ttl:             ttl,
+		staleCacheTTL:   staleCacheTTL,
 		stampedeTracker: newStampedeTracker(),
+		coalescer:       coalescer,
 	}
 }
 
@@ -80,9 +90,44 @@ func (s *WeatherService) GetWeather(ctx context.Context, location string) (model
 	if logger != nil {
 		logger.Debug("cache miss, fetching upstream", zap.String("location", key))
 	}
-	data, err := s.client.GetCurrentWeather(ctx, key)
-	if err != nil {
-		return models.WeatherData{}, fmt.Errorf("fetch weather for %s: %w", key, err)
+
+	// Use coalescer if enabled to prevent concurrent upstream calls for same key
+	var data models.WeatherData
+	var upstreamErr error
+	if s.coalescer != nil {
+		coalesceStart := time.Now()
+		data, upstreamErr = s.coalescer.GetOrDo(ctx, key, func() (models.WeatherData, error) {
+			return s.client.GetCurrentWeather(ctx, key)
+		})
+		coalesceWait := time.Since(coalesceStart)
+		if upstreamErr == nil {
+			// Check if we waited (coalesced) vs initiated the request
+			// If wait time > 0, we likely coalesced (approximate)
+			if coalesceWait > 10*time.Millisecond {
+				observability.RequestCoalescingHitsTotal.WithLabelValues(observability.MetricLocationLabel(key)).Inc()
+			}
+			observability.RequestCoalescingWaitSeconds.Observe(coalesceWait.Seconds())
+		}
+	} else {
+		data, upstreamErr = s.client.GetCurrentWeather(ctx, key)
+	}
+	if upstreamErr != nil {
+		// Upstream failed - try stale cache if enabled
+		if s.staleCacheTTL > 0 {
+			stale, ok, staleErr := s.cache.GetStale(ctx, key, s.staleCacheTTL)
+			if staleErr == nil && ok {
+				// Calculate age from timestamp
+				staleAge := time.Since(stale.Timestamp)
+				observability.StaleCacheServesTotal.WithLabelValues(observability.MetricLocationLabel(key)).Inc()
+				observability.StaleCacheAgeSeconds.Observe(staleAge.Seconds())
+				stale.Stale = true
+				if logger != nil {
+					logger.Info("serving stale cache", zap.String("location", key), zap.Duration("age", staleAge))
+				}
+				return stale, nil
+			}
+		}
+		return models.WeatherData{}, fmt.Errorf("fetch weather for %s: %w", key, upstreamErr)
 	}
 
 	setStart := time.Now()

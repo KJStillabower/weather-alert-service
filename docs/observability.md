@@ -37,6 +37,8 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | `weatherApiDurationSeconds` | Histogram | status | Upstream latency | p95 > 2s (degradation); p99 > 5s (timeout risk) |
 | `weatherApiRetriesTotal` | Counter | — | Retry attempts | High rate = unstable upstream; transient failures |
 | `weatherApiErrorsTotal` | Counter | category | Weather API errors by category (timeout, network, invalid_api_key, rate_limited, upstream_5xx, parsing, etc.) | Error mix; debugging; see client.CategorizeError |
+| `upstreamRateLimitHeadersParsedTotal` | Counter | — | Rate limit headers parsed from upstream (Retry-After, X-RateLimit-Reset) | Header parsing success; upstream rate limit compliance |
+| `upstreamRateLimitRetryAfterSeconds` | Histogram | — | Retry-After values from upstream headers | Upstream rate limit timing; retry delay distribution |
 
 #### Cache
 
@@ -47,6 +49,10 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | `cacheStampedeConcurrency` | Histogram | location | Concurrent miss count when stampede detected | Severity of stampede; per-key load |
 | `cacheErrorsTotal` | Counter | operation, type | Cache errors by operation (get, set) and type (timeout, connection, unknown) | High rate = cache backend issues; alert on connection type |
 | `cacheOperationDurationSeconds` | Histogram | operation, status | Get/Set duration; status success or error | Slow or failing cache ops; p95 by status |
+| `staleCacheServesTotal` | Counter | location | Requests served from stale cache (expired but within max age) | High rate = upstream failures; graceful degradation working |
+| `staleCacheAgeSeconds` | Histogram | — | Age of stale cache entries when served | How stale data is; freshness vs availability trade-off |
+| `requestCoalescingHitsTotal` | Counter | location | Requests served via coalescing (waited for in-flight request) | Coalescing effectiveness; prevents cache stampede |
+| `requestCoalescingWaitSeconds` | Histogram | — | Time spent waiting for coalesced requests | Coalescing overhead; should be < upstream latency |
 
 #### Business
 
