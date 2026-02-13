@@ -131,10 +131,22 @@ This section lists log events that can be generated in each code path. No log ev
 
 Routine success, cache hits, and 429 responses are not logged.
 
-#### GET /health, GET /metrics
+#### GET /health
 
-Health and metrics probes produce no application logs.
-TODO: Issue #9 updates our health status logging.
+| Log Event | Level | When | Fields |
+|-----------|-------|------|--------|
+| `health status transition` | INFO | Status changes (e.g. healthy -> degraded, overloaded -> healthy) | `previous_status`, `current_status`, `reason` |
+| (none) | — | Routine probe; status unchanged | — |
+
+Reasons: `api_key_invalid`, `error_rate_breach`, `overload_threshold`, `signal` (shutting-down), `low_traffic` (idle). Routine probes when status is unchanged produce no logs.
+
+#### GET /metrics
+
+| Log Event | Level | When | Fields |
+|-----------|-------|------|--------|
+| (none) | — | All | — |
+
+Metrics probes produce no application logs.
 
 #### GET /test, POST /test/{action} (testing mode)
 

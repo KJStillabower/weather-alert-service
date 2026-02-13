@@ -17,6 +17,7 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/overload"
 	"github.com/kjstillabower/weather-alert-service/internal/service"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type mockWeatherClient struct {
@@ -510,5 +511,80 @@ func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
 
 	if health["status"] != "healthy" {
 		t.Errorf("Health status = %q, want healthy (error rate below threshold)", health["status"])
+	}
+}
+
+func TestHandler_GetHealth_LogsTransition(t *testing.T) {
+	degraded.Reset()
+	core, logs := observer.New(zap.DebugLevel)
+	logger := zap.New(core)
+
+	healthConfig := &HealthConfig{
+		DegradedWindow:   1 * time.Minute,
+		DegradedErrorPct: 50,
+	}
+	mockClient := &mockWeatherClient{}
+	mockCache := &mockCache{}
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
+
+	// First call: healthy (no errors yet). Establishes prev.
+	degraded.RecordSuccess()
+	degraded.RecordSuccess()
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	handler.GetHealth(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first GetHealth status = %d, want 200", w.Code)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("first call should not log transition; got %d logs", logs.Len())
+	}
+
+	// Inject errors to breach threshold (66% > 50%).
+	degraded.RecordError()
+	degraded.RecordError()
+
+	// Second call: degraded. Triggers transition log.
+	w2 := httptest.NewRecorder()
+	handler.GetHealth(w2, req)
+	if w2.Code != http.StatusServiceUnavailable {
+		t.Fatalf("second GetHealth status = %d, want 503", w2.Code)
+	}
+
+	entries := logs.FilterMessage("health status transition").All()
+	if len(entries) != 1 {
+		t.Fatalf("want 1 transition log, got %d", len(entries))
+	}
+	entry := entries[0]
+	var prev, curr, reason string
+	for _, f := range entry.Context {
+		switch f.Key {
+		case "previous_status":
+			prev = f.String
+		case "current_status":
+			curr = f.String
+		case "reason":
+			reason = f.String
+		}
+	}
+	if prev != "healthy" {
+		t.Errorf("previous_status = %q, want healthy", prev)
+	}
+	if curr != "degraded" {
+		t.Errorf("current_status = %q, want degraded", curr)
+	}
+	if reason != "error_rate_breach" {
+		t.Errorf("reason = %q, want error_rate_breach", reason)
+	}
+
+	// Third call: still degraded. No new transition log.
+	w3 := httptest.NewRecorder()
+	handler.GetHealth(w3, req)
+	if w3.Code != http.StatusServiceUnavailable {
+		t.Fatalf("third GetHealth status = %d, want 503", w3.Code)
+	}
+	if logs.Len() != 1 {
+		t.Errorf("third call (status unchanged) should not log; total logs = %d, want 1", logs.Len())
 	}
 }
