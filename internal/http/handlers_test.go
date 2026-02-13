@@ -587,6 +587,9 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 	}
 	if logs.Len() != 1 {
 		t.Errorf("third call (status unchanged) should not log; total logs = %d, want 1", logs.Len())
+	}
+}
+
 func TestHandler_GetTestStatus(t *testing.T) {
 	overload.Reset()
 	degraded.Reset()
