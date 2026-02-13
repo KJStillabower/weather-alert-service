@@ -17,6 +17,9 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/overload"
 )
 
+// CorrelationIDMiddleware adds or generates a correlation ID for each request.
+// Extracts X-Correlation-ID from request header, or generates a new UUID if missing.
+// Adds correlation ID to request context and response header, and attaches logger with correlation_id field.
 func CorrelationIDMiddleware(logger *zap.Logger) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +42,9 @@ func CorrelationIDMiddleware(logger *zap.Logger) mux.MiddlewareFunc {
 	}
 }
 
+// MetricsMiddleware instruments HTTP requests with Prometheus metrics.
+// Records request count, duration, and in-flight requests. Uses route template
+// (e.g., /weather/{location}) to avoid cardinality explosion.
 func MetricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -58,6 +64,8 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// getRoute returns the route template for the request path to avoid cardinality
+// in metrics. Maps specific paths to templates (e.g., /weather/seattle -> /weather/{location}).
 func getRoute(r *http.Request) string {
 	path := r.URL.Path
 	switch {
@@ -72,6 +80,8 @@ func getRoute(r *http.Request) string {
 	}
 }
 
+// statusRecorder wraps http.ResponseWriter to capture the HTTP status code
+// written by handlers for metrics recording.
 type statusRecorder struct {
 	http.ResponseWriter
 	statusCode int
@@ -82,6 +92,8 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// statusCodeString converts HTTP status code to status class string (e.g., 200 -> "2xx", 404 -> "4xx").
+// Used for metrics labeling to group status codes by class.
 func statusCodeString(code int) string {
 	return fmt.Sprintf("%dxx", code/100)
 }
@@ -119,6 +131,8 @@ func RateLimitMiddleware(limiter *rate.Limiter) mux.MiddlewareFunc {
 	}
 }
 
+// writeRateLimitError writes a 429 Too Many Requests error response in the standard error format.
+// Includes correlation ID from request context if available.
 func writeRateLimitError(w http.ResponseWriter, r *http.Request) {
 	corrID := ""
 	if v := r.Context().Value("correlation_id"); v != nil {

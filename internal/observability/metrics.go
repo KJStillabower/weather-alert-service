@@ -186,6 +186,8 @@ func RecordWeatherQuery(location string) {
 	}
 }
 
+// normalizeLocationForMetrics normalizes location strings for metrics labeling
+// by trimming whitespace and converting to lowercase. Used to match against tracked locations.
 func normalizeLocationForMetrics(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ToLower(s)

@@ -35,6 +35,8 @@ func NewMemcachedCache(addrs string, timeout time.Duration, maxIdleConns int) (*
 	return &MemcachedCache{client: client}, nil
 }
 
+// parseAddrs parses a comma-separated list of memcached server addresses.
+// Trims whitespace and filters out empty entries.
 func parseAddrs(s string) []string {
 	var out []string
 	for _, a := range strings.Split(s, ",") {
@@ -46,6 +48,7 @@ func parseAddrs(s string) []string {
 	return out
 }
 
+// key prefixes the cache key with "weather:" namespace to avoid collisions.
 func (c *MemcachedCache) key(k string) string {
 	return keyPrefix + k
 }
@@ -69,7 +72,8 @@ func (c *MemcachedCache) Get(ctx context.Context, key string) (models.WeatherDat
 	return data, true, nil
 }
 
-// Set implements Cache.Set.
+// Set implements Cache.Set. Stores weather data in memcached with TTL expiration.
+// TTL is capped at 30 days (memcached limit) and defaults to 1 hour if invalid.
 func (c *MemcachedCache) Set(ctx context.Context, key string, value models.WeatherData, ttl time.Duration) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
