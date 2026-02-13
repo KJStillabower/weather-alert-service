@@ -28,7 +28,7 @@ func TestMiddleware_ThroughHandler(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle", Temperature: 12.0},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -59,7 +59,7 @@ func TestMiddleware_CorrelationIDPropagated(t *testing.T) {
 	// Arrange: Set up handler with middleware and request containing correlation ID
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -90,7 +90,7 @@ func TestMiddleware_MetricsRecordsNonOK(t *testing.T) {
 		err: http.ErrHandlerTimeout,
 	}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -119,7 +119,7 @@ func TestMiddleware_HealthThroughChain(t *testing.T) {
 	// Arrange: Set up handler and middleware chain
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -152,7 +152,7 @@ func TestTimeoutMiddleware_CancelsContextAfterTimeout(t *testing.T) {
 	defer close(slowClient.block)
 
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(slowClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(slowClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, slowClient, nil, logger, nil)
@@ -183,7 +183,7 @@ func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -236,7 +236,7 @@ func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
@@ -275,7 +275,7 @@ func TestRateLimitMiddleware_NilLimiterPassesThrough(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -350,7 +350,7 @@ func TestSubrouter_WeatherRouteWithTimeoutAndRateLimit(t *testing.T) {
 		weather: models.WeatherData{Location: "seattle", Temperature: 10.0},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)

@@ -20,7 +20,7 @@ import (
 func setupBenchmarkHandler() *Handler {
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	return NewHandler(weatherService, mockClient, nil, logger, nil)
 }
@@ -29,7 +29,7 @@ func setupBenchmarkHandler() *Handler {
 func setupBenchmarkHandlerWithCacheHit() *Handler {
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	
 	// Pre-populate cache
 	testData := models.WeatherData{
@@ -83,7 +83,7 @@ func BenchmarkHandler_GetWeather_CacheMiss(b *testing.B) {
 		},
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -105,7 +105,7 @@ func BenchmarkHandler_GetWeather_Error(b *testing.B) {
 		err: client.ErrUpstreamFailure,
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -158,7 +158,7 @@ func BenchmarkHandler_GetWeather_RateLimited(b *testing.B) {
 func BenchmarkHandler_GetHealth(b *testing.B) {
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	
 	healthConfig := &HealthConfig{
 		OverloadWindow:         60 * time.Second,

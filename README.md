@@ -316,6 +316,9 @@ Returns Prometheus-formatted metrics including:
 - `httpRequestsTotal`, `httpRequestDurationSeconds`, `httpRequestSizeBytes`, `httpResponseSizeBytes` - Request counts, latencies, and payload sizes
 - `weatherAPICallsTotal`, `weatherApiDurationSeconds`, `weatherApiErrorsTotal` - External API calls and errors by category
 - `cacheHitsTotal`, `cacheStampedeDetectedTotal`, `cacheStampedeConcurrency` - Cache hits and stampede detection
+- `staleCacheServesTotal`, `staleCacheAgeSeconds` - Stale cache fallback metrics
+- `requestCoalescingHitsTotal`, `requestCoalescingWaitSeconds` - Request coalescing metrics
+- `upstreamRateLimitHeadersParsedTotal`, `upstreamRateLimitRetryAfterSeconds` - Rate limit header parsing metrics
 - `weatherQueriesTotal`, `weatherQueriesByLocationTotal`, `httpErrorsTotal` - Queries and HTTP errors by category
 - Rate limit and runtime metrics. Full list and PromQL: [docs/observability.md](docs/observability.md)
 
@@ -472,6 +475,9 @@ The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in
 | `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Failures before opening circuit | `5` |
 | `CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | Successes in half-open before closing | `2` |
 | `CIRCUIT_BREAKER_TIMEOUT` | Time before half-open after open | `30s` |
+| `STALE_CACHE_MAX_AGE` | Maximum age for stale cache fallback (0 = disabled) | `1h` |
+| `REQUEST_COALESCE_ENABLED` | Enable request coalescing to prevent cache stampede | `true` |
+| `REQUEST_COALESCE_TIMEOUT` | Maximum wait time for coalesced request | `5s` |
 
 ### Production Considerations
 

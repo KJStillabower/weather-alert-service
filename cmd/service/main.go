@@ -79,7 +79,7 @@ func main() {
 		cacheSvc = cache.NewInMemoryCache()
 		logger.Info("cache backend: in_memory")
 	}
-	weatherService := service.NewWeatherService(weatherClient, cacheSvc, cfg.CacheTTL)
+	weatherService := service.NewWeatherService(weatherClient, cacheSvc, cfg.CacheTTL, cfg.StaleCacheTTL, cfg.CoalesceEnabled, cfg.CoalesceTimeout)
 
 	healthConfig := &httphandler.HealthConfig{
 		OverloadWindow:         cfg.OverloadWindow,

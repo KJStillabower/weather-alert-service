@@ -18,11 +18,19 @@ cache:
   ttl: "5m"
   warm_cache: false
   warm_interval: 0
+  stale_cache:
+    enabled: true
+    max_age: 1h
   # Used when backend=memcached; env override: MEMCACHED_ADDRS
   memcached:
     addrs: "localhost:11211"
     timeout: "500ms"
     max_idle_conns: 2
+
+service:
+  request_coalescing:
+    enabled: true
+    timeout: 5s
 
 reliability:
   retry_max_attempts: 3

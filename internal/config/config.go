@@ -23,6 +23,9 @@ type Config struct {
 	RequestTimeout time.Duration
 	CacheTTL       time.Duration
 	CacheBackend   string // "in_memory" or "memcached"
+	StaleCacheTTL  time.Duration // Maximum age for stale cache fallback
+	CoalesceEnabled bool
+	CoalesceTimeout time.Duration // Maximum wait time for coalesced request
 
 	MemcachedAddrs       string
 	MemcachedTimeout     time.Duration
@@ -81,12 +84,23 @@ type fileConfig struct {
 		TTL          string `yaml:"ttl"`
 		WarmCache    *bool  `yaml:"warm_cache"`
 		WarmInterval string `yaml:"warm_interval"`
+		StaleCache   struct {
+			Enabled bool   `yaml:"enabled"`
+			MaxAge  string `yaml:"max_age"`
+		} `yaml:"stale_cache"`
 		Memcached struct {
 			Addrs        string `yaml:"addrs"`
 			Timeout      string `yaml:"timeout"`
 			MaxIdleConns int    `yaml:"max_idle_conns"`
 		} `yaml:"memcached"`
 	} `yaml:"cache"`
+
+	Service struct {
+		RequestCoalescing struct {
+			Enabled bool   `yaml:"enabled"`
+			Timeout string `yaml:"timeout"`
+		} `yaml:"request_coalescing"`
+	} `yaml:"service"`
 
 	Reliability struct {
 		RetryMaxAttempts int    `yaml:"retry_max_attempts"`
@@ -224,6 +238,33 @@ func Load() (*Config, error) {
 	cfg.MemcachedMaxIdleConns = fc.Cache.Memcached.MaxIdleConns
 	if cfg.MemcachedMaxIdleConns <= 0 {
 		cfg.MemcachedMaxIdleConns = 2
+	}
+	cfg.StaleCacheTTL = parseDuration(fc.Cache.StaleCache.MaxAge, 1*time.Hour)
+	if !fc.Cache.StaleCache.Enabled {
+		cfg.StaleCacheTTL = 0 // Disabled
+	}
+	if s := strings.TrimSpace(os.Getenv("STALE_CACHE_MAX_AGE")); s != "" {
+		cfg.StaleCacheTTL = parseDurationOrZero(s, 0)
+	}
+	if cfg.StaleCacheTTL < 0 {
+		cfg.StaleCacheTTL = 0
+	}
+
+	cfg.CoalesceEnabled = fc.Service.RequestCoalescing.Enabled
+	if !fc.Service.RequestCoalescing.Enabled {
+		cfg.CoalesceEnabled = true // Default enabled
+	}
+	if v := strings.TrimSpace(strings.ToLower(os.Getenv("REQUEST_COALESCE_ENABLED"))); v == "false" || v == "0" {
+		cfg.CoalesceEnabled = false
+	} else if v == "true" || v == "1" {
+		cfg.CoalesceEnabled = true
+	}
+	cfg.CoalesceTimeout = parseDuration(fc.Service.RequestCoalescing.Timeout, 5*time.Second)
+	if s := strings.TrimSpace(os.Getenv("REQUEST_COALESCE_TIMEOUT")); s != "" {
+		cfg.CoalesceTimeout = parseDurationOrZero(s, 5*time.Second)
+	}
+	if cfg.CoalesceTimeout <= 0 {
+		cfg.CoalesceTimeout = 5 * time.Second
 	}
 
 	cfg.RetryAttempts = fc.Reliability.RetryMaxAttempts

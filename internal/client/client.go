@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,29 @@ var (
 	// ErrRateLimited indicates the upstream API rate limit was exceeded (429).
 	ErrRateLimited = errors.New("rate limited")
 )
+
+// rateLimitedError wraps ErrRateLimited with retry timing information from headers.
+type rateLimitedError struct {
+	err        error
+	retryAfter time.Duration
+	resetAt    time.Time
+}
+
+func (e *rateLimitedError) Error() string {
+	return e.err.Error()
+}
+
+func (e *rateLimitedError) Unwrap() error {
+	return e.err
+}
+
+// rateLimitInfo holds parsed rate limit header values.
+type rateLimitInfo struct {
+	retryAfter time.Duration
+	resetAt    time.Time
+	limit      int
+	remaining  int
+}
 
 // OpenWeatherClient implements WeatherClient for OpenWeatherMap API.
 // Provides retry logic with exponential backoff for transient failures.
@@ -119,12 +143,21 @@ func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location stri
 }
 
 // getCurrentWeatherWithRetry runs the retry loop for fetching weather. Used by GetCurrentWeather with or without circuit breaker.
+// Respects Retry-After header from rate limit responses; falls back to exponential backoff otherwise.
 func (c *OpenWeatherClient) getCurrentWeatherWithRetry(ctx context.Context, location string, upstreamTimeout time.Duration) (models.WeatherData, error) {
 	var lastErr error
 	for attempt := 0; attempt < c.retryAttempts; attempt++ {
 		if attempt > 0 {
 			observability.WeatherAPIRetriesTotal.Inc()
-			delay := c.calculateBackoff(attempt)
+
+			// Check if last error had rate limit info
+			var delay time.Duration
+			if rle, ok := lastErr.(*rateLimitedError); ok && rle.retryAfter > 0 {
+				delay = rle.retryAfter
+			} else {
+				delay = c.calculateBackoff(attempt)
+			}
+
 			select {
 			case <-ctx.Done():
 				return models.WeatherData{}, ctx.Err()
@@ -296,8 +329,50 @@ func (c *OpenWeatherClient) buildRequest(ctx context.Context, location string) (
 	return req, nil
 }
 
+// parseRateLimitHeaders extracts rate limit information from HTTP response headers.
+// Parses Retry-After (seconds or HTTP date), X-RateLimit-Reset (Unix timestamp),
+// X-RateLimit-Limit, and X-RateLimit-Remaining for metrics.
+func parseRateLimitHeaders(resp *http.Response) *rateLimitInfo {
+	info := &rateLimitInfo{}
+
+	// Parse Retry-After header (seconds or HTTP date)
+	if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+		if seconds, err := strconv.Atoi(retryAfter); err == nil {
+			info.retryAfter = time.Duration(seconds) * time.Second
+		} else if t, err := http.ParseTime(retryAfter); err == nil {
+			info.retryAfter = time.Until(t)
+			if info.retryAfter < 0 {
+				info.retryAfter = 0
+			}
+		}
+	}
+
+	// Parse X-RateLimit-Reset (Unix timestamp)
+	if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
+		if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
+			info.resetAt = time.Unix(ts, 0)
+			if info.retryAfter == 0 {
+				info.retryAfter = time.Until(info.resetAt)
+				if info.retryAfter < 0 {
+					info.retryAfter = 0
+				}
+			}
+		}
+	}
+
+	// Parse X-RateLimit-Limit and X-RateLimit-Remaining (for metrics)
+	if limit := resp.Header.Get("X-RateLimit-Limit"); limit != "" {
+		info.limit, _ = strconv.Atoi(limit)
+	}
+	if remaining := resp.Header.Get("X-RateLimit-Remaining"); remaining != "" {
+		info.remaining, _ = strconv.Atoi(remaining)
+	}
+
+	return info
+}
+
 // handleErrorResponse maps HTTP status codes to domain errors.
-// 401 -> ErrInvalidAPIKey, 404 -> ErrLocationNotFound, 429 -> ErrRateLimited,
+// 401 -> ErrInvalidAPIKey, 404 -> ErrLocationNotFound, 429 -> ErrRateLimited (with header info),
 // 5xx -> ErrUpstreamFailure. Returns nil for 2xx status codes.
 func (c *OpenWeatherClient) handleErrorResponse(resp *http.Response) error {
 	switch resp.StatusCode {
@@ -306,7 +381,17 @@ func (c *OpenWeatherClient) handleErrorResponse(resp *http.Response) error {
 	case http.StatusNotFound:
 		return fmt.Errorf("%w", ErrLocationNotFound)
 	case http.StatusTooManyRequests:
-		return fmt.Errorf("%w", ErrRateLimited)
+		rateLimitInfo := parseRateLimitHeaders(resp)
+		if rateLimitInfo.retryAfter > 0 {
+			observability.UpstreamRateLimitHeadersParsedTotal.Inc()
+			observability.UpstreamRateLimitRetryAfterSeconds.Observe(rateLimitInfo.retryAfter.Seconds())
+		}
+		err := fmt.Errorf("%w", ErrRateLimited)
+		return &rateLimitedError{
+			err:        err,
+			retryAfter: rateLimitInfo.retryAfter,
+			resetAt:    rateLimitInfo.resetAt,
+		}
 	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return fmt.Errorf("%w: HTTP %d", ErrUpstreamFailure, resp.StatusCode)
 	}

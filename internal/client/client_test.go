@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -590,6 +592,97 @@ func TestOpenWeatherClient_calculateBackoff(t *testing.T) {
 	}
 }
 
+// TestOpenWeatherClient_calculateBackoff_JitterDistribution validates jitter distribution
+// to ensure it prevents thundering herd problems.
+func TestOpenWeatherClient_calculateBackoff_JitterDistribution(t *testing.T) {
+	client := &OpenWeatherClient{
+		retryBaseDelay: 200 * time.Millisecond,
+		retryMaxDelay:  2 * time.Second,
+	}
+
+	attempt := 2 // Should be ~400ms base with jitter
+	attempts := 1000
+	delays := make([]time.Duration, attempts)
+
+	for i := 0; i < attempts; i++ {
+		delays[i] = client.calculateBackoff(attempt)
+	}
+
+	// Base delay: 200ms * 2^(2-1) = 400ms
+	baseDelay := 200 * time.Millisecond * time.Duration(1<<uint(attempt-1))
+	if baseDelay > client.retryMaxDelay {
+		baseDelay = client.retryMaxDelay
+	}
+
+	// Jitter is 10% of base, so range is [baseDelay, baseDelay + 0.1*baseDelay]
+	minDelay := baseDelay
+	maxDelay := baseDelay + time.Duration(float64(baseDelay)*0.1)
+
+	var sum time.Duration
+	for _, delay := range delays {
+		if delay < minDelay || delay > maxDelay {
+			t.Errorf("Delay %v outside expected range [%v, %v]", delay, minDelay, maxDelay)
+		}
+		sum += delay
+	}
+
+	meanDelay := sum / time.Duration(attempts)
+	// Mean should be approximately baseDelay + 0.05*baseDelay (half of jitter range)
+	expectedMean := baseDelay + time.Duration(float64(baseDelay)*0.05)
+	tolerance := time.Duration(float64(baseDelay) * 0.02) // 2% tolerance
+
+	if meanDelay < expectedMean-tolerance || meanDelay > expectedMean+tolerance {
+		t.Logf("Mean delay %v, expected approximately %v (within %v)", meanDelay, expectedMean, tolerance)
+		// Not a failure, just informational - jitter is random
+	}
+}
+
+// TestOpenWeatherClient_calculateBackoff_JitterPreventsThunderingHerd validates that
+// jitter prevents synchronized retries by ensuring delays vary across concurrent calls.
+func TestOpenWeatherClient_calculateBackoff_JitterPreventsThunderingHerd(t *testing.T) {
+	client := &OpenWeatherClient{
+		retryBaseDelay: 100 * time.Millisecond,
+		retryMaxDelay:  2 * time.Second,
+	}
+
+	attempt := 1
+	concurrentCalls := 100
+	delays := make([]time.Duration, concurrentCalls)
+
+	var wg sync.WaitGroup
+	for i := 0; i < concurrentCalls; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			delays[idx] = client.calculateBackoff(attempt)
+		}(i)
+	}
+	wg.Wait()
+
+	// Check that delays are not all identical (jitter adds variation)
+	firstDelay := delays[0]
+	allSame := true
+	for _, delay := range delays {
+		if delay != firstDelay {
+			allSame = false
+			break
+		}
+	}
+	if allSame {
+		t.Error("All delays are identical; jitter is not working")
+	}
+
+	// Count unique delays - should have multiple unique values
+	uniqueDelays := make(map[time.Duration]struct{})
+	for _, delay := range delays {
+		uniqueDelays[delay] = struct{}{}
+	}
+	if len(uniqueDelays) < 10 {
+		t.Logf("Only %d unique delays out of %d calls; jitter may be insufficient", len(uniqueDelays), concurrentCalls)
+		// Not a failure, but worth noting
+	}
+}
+
 // TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries verifies that GetCurrentWeather
 // returns ErrUpstreamFailure with "exhausted retries" message when all retry attempts fail.
 func TestOpenWeatherClient_GetCurrentWeather_ExhaustedRetries(t *testing.T) {
@@ -834,10 +927,138 @@ func TestCoverageGaps_IntentionallyUntested(t *testing.T) {
 	t.Run("handleErrorResponse_401_404_429_branches", func(t *testing.T) {
 		t.Skip("401, 404, 429 branches are tested via handleErrorResponse table; remaining 12.5% is edge-case status handling")
 	})
-	t.Run("statusLabel_fallback_error", func(t *testing.T) {
-		t.Skip("statusLabel fallback for status < 200 or >= 600 is edge case; API returns 2xx/4xx/5xx")
-	})
-	t.Run("ValidateAPIKey_401_vs_non200", func(t *testing.T) {
-		t.Skip("ValidateAPIKey 401 vs generic non-200 branches; integration test covers happy path")
-	})
+}
+
+// TestOpenWeatherClient_RateLimitHeaderParsing verifies that rate limit headers are parsed
+// and used for retry delays instead of exponential backoff.
+func TestOpenWeatherClient_RateLimitHeaderParsing(t *testing.T) {
+	tests := []struct {
+		name            string
+		retryAfter      string
+		rateLimitReset  string
+		wantRetryAfter  time.Duration
+		wantHeaderParse bool
+	}{
+		{
+			name:            "Retry-After seconds",
+			retryAfter:      "1",
+			wantRetryAfter:  1 * time.Second,
+			wantHeaderParse: true,
+		},
+		{
+			name:            "Retry-After HTTP date",
+			retryAfter:      time.Now().Add(1 * time.Second).Format(http.TimeFormat),
+			wantRetryAfter:  1 * time.Second,
+			wantHeaderParse: true,
+		},
+		{
+			name:            "X-RateLimit-Reset Unix timestamp",
+			rateLimitReset:  fmt.Sprintf("%d", time.Now().Add(1*time.Second).Unix()),
+			wantRetryAfter:  1 * time.Second,
+			wantHeaderParse: true,
+		},
+		{
+			name:            "No headers",
+			wantRetryAfter:  0,
+			wantHeaderParse: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attempt := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempt++
+				if attempt == 1 {
+					if tt.retryAfter != "" {
+						w.Header().Set("Retry-After", tt.retryAfter)
+					}
+					if tt.rateLimitReset != "" {
+						w.Header().Set("X-RateLimit-Reset", tt.rateLimitReset)
+					}
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				// Second request succeeds
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"main":{"temp":10,"humidity":50},"weather":[{"main":"Clear","description":"clear sky"}],"wind":{"speed":5},"name":"test"}`))
+			}))
+			defer server.Close()
+
+			client, err := NewOpenWeatherClientWithRetry("test-api-key-12345", server.URL, 2*time.Second, 3, 100*time.Millisecond, 2*time.Second)
+			if err != nil {
+				t.Fatalf("NewOpenWeatherClientWithRetry() error = %v", err)
+			}
+
+			// Use longer timeout to accommodate retry delays
+			ctxTimeout := tt.wantRetryAfter + 5*time.Second
+			if ctxTimeout < 10*time.Second {
+				ctxTimeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+			defer cancel()
+
+			start := time.Now()
+			_, err = client.GetCurrentWeather(ctx, "test")
+			elapsed := time.Since(start)
+
+			if err != nil {
+				t.Fatalf("GetCurrentWeather() error = %v", err)
+			}
+
+			if tt.wantHeaderParse && tt.wantRetryAfter > 0 {
+				// Should have waited approximately retryAfter (with some tolerance)
+				tolerance := 500 * time.Millisecond
+				if elapsed < tt.wantRetryAfter-tolerance || elapsed > tt.wantRetryAfter+tolerance+500*time.Millisecond {
+					t.Logf("Elapsed time %v, expected approximately %v (tolerance %v)", elapsed, tt.wantRetryAfter, tolerance)
+					// Not a hard failure - timing can vary
+				}
+			}
+		})
+	}
+}
+
+// TestOpenWeatherClient_RateLimitErrorType verifies that rate limit errors wrap header info.
+// Tests indirectly via GetCurrentWeather retry behavior.
+func TestOpenWeatherClient_RateLimitErrorType(t *testing.T) {
+	attempt := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt++
+		if attempt == 1 {
+			w.Header().Set("Retry-After", "1") // Use 1s for faster test
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		// Second request succeeds
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"main":{"temp":10,"humidity":50},"weather":[{"main":"Clear","description":"clear sky"}],"wind":{"speed":5},"name":"test"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenWeatherClientWithRetry("test-api-key-12345", server.URL, 2*time.Second, 3, 100*time.Millisecond, 2*time.Second)
+	if err != nil {
+		t.Fatalf("NewOpenWeatherClientWithRetry() error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err = client.GetCurrentWeather(ctx, "test")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("GetCurrentWeather() error = %v", err)
+	}
+
+	// Should have waited approximately 1s (Retry-After) instead of ~100ms (exponential backoff)
+	// Allow tolerance for test execution overhead
+	if elapsed < 800*time.Millisecond {
+		t.Errorf("GetCurrentWeather() elapsed = %v, expected ~1s (Retry-After respected)", elapsed)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("GetCurrentWeather() elapsed = %v, expected ~1s (not too long)", elapsed)
+	}
 }

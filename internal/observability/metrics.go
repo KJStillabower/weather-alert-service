@@ -85,6 +85,21 @@ var (
 	// CacheWarmingDurationSeconds tracks cache warming operation duration.
 	CacheWarmingDurationSeconds prometheus.Histogram
 
+	// UpstreamRateLimitHeadersParsedTotal counts rate limit headers parsed from upstream.
+	UpstreamRateLimitHeadersParsedTotal prometheus.Counter
+	// UpstreamRateLimitRetryAfterSeconds tracks Retry-After values from upstream headers.
+	UpstreamRateLimitRetryAfterSeconds prometheus.Histogram
+
+	// StaleCacheServesTotal counts requests served from stale cache.
+	StaleCacheServesTotal *prometheus.CounterVec
+	// StaleCacheAgeSeconds tracks age of stale cache entries when served.
+	StaleCacheAgeSeconds prometheus.Histogram
+
+	// RequestCoalescingHitsTotal counts requests served via coalescing.
+	RequestCoalescingHitsTotal *prometheus.CounterVec
+	// RequestCoalescingWaitSeconds tracks time spent waiting for coalesced requests.
+	RequestCoalescingWaitSeconds prometheus.Histogram
+
 	// trackedLocations is built from config; used to resolve location for metrics.
 	trackedLocationsMu sync.RWMutex
 	trackedLocations   map[string]struct{}
@@ -274,6 +289,47 @@ func init() {
 			Buckets: []float64{1, 5, 10, 30, 60},
 		},
 	)
+	UpstreamRateLimitHeadersParsedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "upstreamRateLimitHeadersParsedTotal",
+			Help: "Total number of rate limit headers parsed from upstream",
+		},
+	)
+	UpstreamRateLimitRetryAfterSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "upstreamRateLimitRetryAfterSeconds",
+			Help:    "Retry-After values from upstream rate limit headers in seconds",
+			Buckets: []float64{1, 5, 10, 30, 60, 300, 600},
+		},
+	)
+	StaleCacheServesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "staleCacheServesTotal",
+			Help: "Total number of requests served from stale cache",
+		},
+		[]string{"location"},
+	)
+	StaleCacheAgeSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "staleCacheAgeSeconds",
+			Help:    "Age of stale cache entries when served in seconds",
+			Buckets: []float64{60, 300, 600, 1800, 3600, 7200},
+		},
+	)
+	RequestCoalescingHitsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "requestCoalescingHitsTotal",
+			Help: "Total number of requests served via coalescing",
+		},
+		[]string{"location"},
+	)
+	RequestCoalescingWaitSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "requestCoalescingWaitSeconds",
+			Help:    "Time spent waiting for coalesced requests in seconds",
+			Buckets: []float64{.001, .005, .01, .05, .1, .5, 1, 5},
+		},
+	)
 
 	registry.MustRegister(
 		HTTPRequestsTotal, HTTPRequestDuration, HTTPRequestsInFlight,
@@ -289,6 +345,9 @@ func init() {
 		RequestTimeoutPropagatedTotal,
 		CircuitBreakerState, CircuitBreakerTransitionsTotal,
 		CacheWarmingTotal, CacheWarmingErrorsTotal, CacheWarmingDurationSeconds,
+		UpstreamRateLimitHeadersParsedTotal, UpstreamRateLimitRetryAfterSeconds,
+		StaleCacheServesTotal, StaleCacheAgeSeconds,
+		RequestCoalescingHitsTotal, RequestCoalescingWaitSeconds,
 	)
 }
 

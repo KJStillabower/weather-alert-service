@@ -75,3 +75,50 @@ func TestInMemoryCache_Get_Expired(t *testing.T) {
 		t.Error("Expired entry should be deleted from cache")
 	}
 }
+
+// TestInMemoryCache_GetStale verifies that GetStale returns stale data within maxStaleAge.
+func TestInMemoryCache_GetStale(t *testing.T) {
+	ctx := context.Background()
+	c := NewInMemoryCache()
+
+	val := models.WeatherData{Location: "seattle", Temperature: 12.5}
+	// Set with very short TTL so it expires quickly
+	err := c.Set(ctx, "seattle", val, 1*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	// GetStale should return data if within maxStaleAge
+	got, ok, err := c.GetStale(ctx, "seattle", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("GetStale() error = %v", err)
+	}
+	if !ok {
+		t.Error("GetStale() ok = false, want true (within maxStaleAge)")
+	}
+	if got.Location != val.Location {
+		t.Errorf("GetStale() = %+v, want %+v", got, val)
+	}
+
+	// GetStale should return false if too stale
+	_, ok2, _ := c.GetStale(ctx, "seattle", 1*time.Millisecond)
+	if ok2 {
+		t.Error("GetStale() ok = true, want false (too stale)")
+	}
+}
+
+// TestInMemoryCache_GetStale_Miss verifies that GetStale returns false for non-existent keys.
+func TestInMemoryCache_GetStale_Miss(t *testing.T) {
+	ctx := context.Background()
+	c := NewInMemoryCache()
+
+	_, ok, err := c.GetStale(ctx, "nonexistent", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("GetStale() error = %v", err)
+	}
+	if ok {
+		t.Error("GetStale() ok = true, want false for miss")
+	}
+}

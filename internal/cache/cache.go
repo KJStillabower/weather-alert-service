@@ -9,8 +9,10 @@ import (
 
 // Cache defines the interface for weather data caching implementations.
 // Get returns cached data if present and not expired, Set stores data with TTL.
+// GetStale returns cached data if present and within maxStaleAge (even if expired).
 type Cache interface {
 	Get(ctx context.Context, key string) (models.WeatherData, bool, error)
+	GetStale(ctx context.Context, key string, maxStaleAge time.Duration) (models.WeatherData, bool, error)
 	Set(ctx context.Context, key string, value models.WeatherData, ttl time.Duration) error
 }
 
@@ -44,6 +46,22 @@ func (c *InMemoryCache) Get(ctx context.Context, key string) (models.WeatherData
 
 	if time.Now().After(entry.expiresAt) {
 		delete(c.data, key)
+		return models.WeatherData{}, false, nil
+	}
+
+	return entry.value, true, nil
+}
+
+// GetStale retrieves cached weather data if present and within maxStaleAge, even if expired.
+// Returns (data, true, nil) if stale data available, (zero, false, nil) if not found or too stale.
+func (c *InMemoryCache) GetStale(ctx context.Context, key string, maxStaleAge time.Duration) (models.WeatherData, bool, error) {
+	entry, ok := c.data[key]
+	if !ok {
+		return models.WeatherData{}, false, nil
+	}
+
+	age := time.Since(entry.expiresAt)
+	if age > maxStaleAge {
 		return models.WeatherData{}, false, nil
 	}
 

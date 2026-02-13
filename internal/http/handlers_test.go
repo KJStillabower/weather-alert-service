@@ -58,6 +58,11 @@ func (m *mockCache) Get(ctx context.Context, key string) (models.WeatherData, bo
 	return val, ok, nil
 }
 
+func (m *mockCache) GetStale(ctx context.Context, key string, maxStaleAge time.Duration) (models.WeatherData, bool, error) {
+	// Mock doesn't track expiration, so GetStale same as Get for tests
+	return m.Get(ctx, key)
+}
+
 func (m *mockCache) Set(ctx context.Context, key string, value models.WeatherData, ttl time.Duration) error {
 	if m.err != nil {
 		return m.err
@@ -84,7 +89,7 @@ func TestHandler_GetWeather_Success(t *testing.T) {
 
 	mockClient := &mockWeatherClient{weather: expectedWeather}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -126,7 +131,7 @@ func TestHandler_GetWeather_EmptyLocation(t *testing.T) {
 	// Arrange: Set up handler and request with whitespace-only location
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -172,7 +177,7 @@ func TestHandler_GetWeather_ServiceError(t *testing.T) {
 		err: errors.New("upstream unavailable"),
 	}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -216,7 +221,7 @@ func TestHandler_GetHealth(t *testing.T) {
 	// Arrange: Set up handler with healthy dependencies
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -263,7 +268,7 @@ func TestHandler_GetHealth_InvalidAPIKey_DegradedWithLogger(t *testing.T) {
 		validateErr: errors.New("invalid API key: API key is invalid or not activated"),
 	}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -311,7 +316,7 @@ func TestHandler_GetHealth_ShuttingDown(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
@@ -351,7 +356,7 @@ func TestHandler_GetHealth_Overloaded(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -390,7 +395,7 @@ func TestHandler_GetHealth_Idle(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -428,7 +433,7 @@ func TestHandler_GetHealth_HealthyNotIdle_RecentStart(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -469,7 +474,7 @@ func TestHandler_GetHealth_HealthyNotIdle_AboveThreshold(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -509,7 +514,7 @@ func TestHandler_GetHealth_DegradedErrorRate(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -549,7 +554,7 @@ func TestHandler_GetHealth_NotDegraded_BelowErrorThreshold(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -588,7 +593,7 @@ func TestHandler_GetHealth_LogsTransition(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
 	// Act: First call - healthy (no errors yet). Establishes previous status.
@@ -671,7 +676,7 @@ func TestHandler_GetWeather_DebugLogs_CacheHit(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{weather: expectedWeather}
 	mockCache := &mockCache{data: map[string]models.WeatherData{"seattle": expectedWeather}}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
@@ -739,7 +744,7 @@ func TestHandler_GetWeather_DebugLogs_CacheMiss(t *testing.T) {
 	}
 	mockClient := &mockWeatherClient{weather: expectedWeather}
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
@@ -800,7 +805,7 @@ func TestHandler_GetTestStatus(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -847,7 +852,7 @@ func TestHandler_PostTestReset(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -892,7 +897,7 @@ func TestHandler_PostTestLoad(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -936,7 +941,7 @@ func TestHandler_PostTestError(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -978,7 +983,7 @@ func TestHandler_PostTestShutdown(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -1017,7 +1022,7 @@ func TestHandler_PostTestPreventClear(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -1060,7 +1065,7 @@ func TestHandler_PostTestFailClear(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
 
@@ -1099,7 +1104,7 @@ func TestHandler_PostTestClear(t *testing.T) {
 
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
@@ -1132,7 +1137,7 @@ func TestHandler_PostTestAction_Unknown(t *testing.T) {
 	// Arrange: Set up handler
 	mockClient := &mockWeatherClient{}
 	mockCache := &mockCache{}
-	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute)
+	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
 	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
 
