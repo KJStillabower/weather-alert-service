@@ -17,11 +17,11 @@ These values are static (config at startup). Prometheus gauges for static config
 
 | Name | Formula | Use |
 |------|----------|-----|
-| `overload_threshold` | `rate_limit_rps * overload_window_seconds * (overload_threshold_pct / 100)` | synthetic_load: total requests must exceed this to trigger overload |
+| `overload_threshold` | `rate_limit_rps * lifecycle_window_seconds * (overload_threshold_pct / 100)` | synthetic_load: total requests must exceed this to trigger overload |
 | `rate_limit_rps` | From config | synthetic_load/degraded: compute batches and spacing |
 | `rate_limit_burst` | From config | synthetic_load/degraded: batch size |
 | `degraded_error_pct` | From config | synthetic_degraded: error budget threshold |
-| `overload_window_seconds` | From config (optional) | For transparency; script can derive from window_length |
+| `overload_window_seconds` | From config (lifecycle_window; optional) | For transparency; script can derive from window_length |
 
 Handler already has `HealthConfig` with `RateLimitRPS`, `OverloadWindow`, `OverloadThresholdPct`, `DegradedWindow`, `DegradedErrorPct`. Rate limit burst is in `rate.Limiter`; Handler does not hold it. We need to pass `RateLimitBurst` into `HealthConfig` or Handler.
 

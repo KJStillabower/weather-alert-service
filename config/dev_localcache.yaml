@@ -11,6 +11,8 @@ weather_api:
 
 request:
   timeout: "10s"
+  location_max_length: 100
+  location_min_length: 1
 
 cache:
   # in_memory | memcached; use memcached for shared cache across instances
@@ -41,15 +43,20 @@ reliability:
 
 shutdown:
   timeout: "30s"
+  in_flight_timeout: "5s"
+  in_flight_check_interval: "100ms"
+
+circuit_breaker:
+  enabled: false
+  failure_threshold: 5
+  success_threshold: 2
+  timeout: "30s"
 
 lifecycle:
   ready_delay: "3s"
-  overload_window: "60s"
+  lifecycle_window: "60s"
   overload_threshold_pct: 80
   idle_threshold_req_per_min: 5
-  idle_window: "5m"
-  minimum_lifespan: "5m"
-  degraded_window: "60s"
   degraded_error_pct: 5
   degraded_retry_initial: "1m"
   degraded_retry_max: "13m"

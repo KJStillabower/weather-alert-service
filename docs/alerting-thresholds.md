@@ -169,7 +169,7 @@ This document provides comprehensive documentation for all alert thresholds in t
 - Threshold should align with rate limit configuration
 
 **Tuning Guidance:**
-- **Tune Based on Rate Limits:** Set threshold based on `rate_limit_rps` and `overload_window`
+- **Tune Based on Rate Limits:** Set threshold based on `rate_limit_rps` and `lifecycle_window`
 - **Too Sensitive:** Increase threshold if normal rate limiting causes alerts
 - **Too Insensitive:** Decrease threshold if capacity issues aren't detected
 
@@ -189,18 +189,18 @@ This document provides comprehensive documentation for all alert thresholds in t
 
 **Rationale:**
 - Indicates service is approaching rate limit capacity
-- Threshold calculated as 80% of `rate_limit_rps * overload_window`
+- Threshold calculated as 80% of `rate_limit_rps * lifecycle_window`
 - Example: 100 RPS * 60s * 0.8 = 4800
 
 **Tuning Guidance:**
-- **Calculate Based on Config:** `rate_limit_rps * overload_window * 0.8`
+- **Calculate Based on Config:** `rate_limit_rps * lifecycle_window * 0.8`
 - **Adjust Percentage:** Use 0.7-0.9 multiplier based on desired early warning
 - **Too Sensitive:** Increase threshold or multiplier
 - **Too Insensitive:** Decrease threshold or multiplier
 
 **Environment-Specific:**
 - **Dev:** Higher threshold (if dev has higher rate limits)
-- **Prod:** Tune based on production `rate_limit_rps` and `overload_window` config
+- **Prod:** Tune based on production `rate_limit_rps` and `lifecycle_window` config
 
 **Configuration-Dependent:**
 - Must be tuned per environment based on actual rate limit configuration

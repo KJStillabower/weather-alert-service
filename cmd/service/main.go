@@ -103,7 +103,7 @@ func main() {
 	if cfg.RateLimitRPS > 0 {
 		limiter = rate.NewLimiter(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)
 	}
-	handler := httphandler.NewHandler(weatherService, weatherClient, healthConfig, logger, limiter)
+	handler := httphandler.NewHandler(weatherService, weatherClient, healthConfig, logger, limiter, cfg.LocationMaxLength, cfg.LocationMinLength)
 
 	observability.RegisterRateLimitGauges(cfg.OverloadWindow)
 	if len(cfg.TrackedLocations) > 0 {

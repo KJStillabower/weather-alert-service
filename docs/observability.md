@@ -272,18 +272,18 @@ SLOs are driven by config. Changing `config/[env].yaml` changes effective target
 
 | SLO | Config Keys | Target | Breach Signal |
 |-----|-------------|--------|---------------|
-| Availability | `lifecycle.degraded_window`, `degraded_error_pct` | Error rate < pct in window | status=degraded |
+| Availability | `lifecycle.lifecycle_window`, `degraded_error_pct` | Error rate < pct in window | status=degraded |
 | Request latency | `request.timeout` | p99 ≤ timeout | 503 (handler timeout) |
 | Upstream latency | `weather_api.timeout` | p95 < timeout | Upstream timeout/retry |
-| Capacity | `lifecycle.overload_window`, `overload_threshold_pct`, `reliability.rate_limit_rps` | Requests ≤ threshold in window | status=overloaded |
+| Capacity | `lifecycle.lifecycle_window`, `overload_threshold_pct`, `reliability.rate_limit_rps` | Requests ≤ threshold in window | status=overloaded |
 | Rate limit | `rate_limit_rps`, `rate_limit_burst` | Minimize 429s | 429 responses |
 | Cache | `cache.ttl` | Hit rate (observability only) | No automatic breach |
 
 **Formulas:**
 
-- **Overload threshold:** `requests in window > rate_limit_rps × overload_window × (overload_threshold_pct/100)` → overloaded
-- **Degraded:** `error_rate ≥ degraded_error_pct` in `degraded_window` → degraded
-- **Idle:** `requests/min < idle_threshold_req_per_min` for `idle_window` after `minimum_lifespan` → idle
+- **Overload threshold:** `requests in window > rate_limit_rps × lifecycle_window × (overload_threshold_pct/100)` → overloaded
+- **Degraded:** `error_rate ≥ degraded_error_pct` in `lifecycle_window` → degraded
+- **Idle:** `requests/min < idle_threshold_req_per_min` for `lifecycle_window` after `lifecycle_window` (min uptime) → idle
 
 ---
 

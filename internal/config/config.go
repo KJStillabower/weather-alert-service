@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +55,9 @@ type Config struct {
 
 	TrackedLocations []string
 
+	LocationMaxLength int
+	LocationMinLength int
+
 	WarmCache    bool
 	WarmInterval time.Duration
 
@@ -76,7 +80,9 @@ type fileConfig struct {
 	} `yaml:"weather_api"`
 
 	Request struct {
-		Timeout string `yaml:"timeout"`
+		Timeout           string `yaml:"timeout"`
+		LocationMaxLength int    `yaml:"location_max_length"`
+		LocationMinLength int    `yaml:"location_min_length"`
 	} `yaml:"request"`
 
 	Cache struct {
@@ -118,12 +124,9 @@ type fileConfig struct {
 
 	Lifecycle struct {
 		ReadyDelay            string `yaml:"ready_delay"`
-		OverloadWindow        string `yaml:"overload_window"`
+		LifecycleWindow       string `yaml:"lifecycle_window"` // Used for overload, idle, minimum_lifespan, and degraded window
 		OverloadThresholdPct  int    `yaml:"overload_threshold_pct"`
 		IdleThresholdReqPerMin int   `yaml:"idle_threshold_req_per_min"`
-		IdleWindow            string `yaml:"idle_window"`
-		MinimumLifespan       string `yaml:"minimum_lifespan"`
-		DegradedWindow        string `yaml:"degraded_window"`
 		DegradedErrorPct      int    `yaml:"degraded_error_pct"`
 		DegradedRetryInitial  string `yaml:"degraded_retry_initial"`
 		DegradedRetryMax      string `yaml:"degraded_retry_max"`
@@ -290,7 +293,16 @@ func Load() (*Config, error) {
 	}
 
 	cfg.ReadyDelay = parseDuration(fc.Lifecycle.ReadyDelay, 3*time.Second)
-	cfg.OverloadWindow = parseDuration(fc.Lifecycle.OverloadWindow, 60*time.Second)
+	lifecycleWindow := parseDuration(fc.Lifecycle.LifecycleWindow, 60*time.Second)
+	if s := strings.TrimSpace(os.Getenv("LIFECYCLE_WINDOW")); s != "" {
+		lifecycleWindow = parseDurationOrZero(s, 60*time.Second)
+		if lifecycleWindow <= 0 {
+			lifecycleWindow = 60 * time.Second
+		}
+	}
+	cfg.OverloadWindow = lifecycleWindow
+	cfg.IdleWindow = lifecycleWindow
+	cfg.MinimumLifespan = lifecycleWindow
 	cfg.OverloadThresholdPct = fc.Lifecycle.OverloadThresholdPct
 	if cfg.OverloadThresholdPct <= 0 {
 		cfg.OverloadThresholdPct = 80
@@ -299,9 +311,7 @@ func Load() (*Config, error) {
 	if cfg.IdleThresholdReqPerMin <= 0 {
 		cfg.IdleThresholdReqPerMin = 5
 	}
-	cfg.IdleWindow = parseDuration(fc.Lifecycle.IdleWindow, 5*time.Minute)
-	cfg.MinimumLifespan = parseDuration(fc.Lifecycle.MinimumLifespan, 5*time.Minute)
-	cfg.DegradedWindow = parseDuration(fc.Lifecycle.DegradedWindow, 60*time.Second)
+	cfg.DegradedWindow = lifecycleWindow
 	cfg.DegradedErrorPct = fc.Lifecycle.DegradedErrorPct
 	if cfg.DegradedErrorPct <= 0 {
 		cfg.DegradedErrorPct = 5
@@ -309,6 +319,25 @@ func Load() (*Config, error) {
 	cfg.DegradedRetryInitial = parseDuration(fc.Lifecycle.DegradedRetryInitial, 1*time.Minute)
 	cfg.DegradedRetryMax = parseDuration(fc.Lifecycle.DegradedRetryMax, 20*time.Minute)
 	cfg.TrackedLocations = fc.Metrics.TrackedLocations
+
+	cfg.LocationMaxLength = fc.Request.LocationMaxLength
+	if cfg.LocationMaxLength <= 0 {
+		cfg.LocationMaxLength = 100
+	}
+	if s := strings.TrimSpace(os.Getenv("LOCATION_MAX_LENGTH")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			cfg.LocationMaxLength = n
+		}
+	}
+	cfg.LocationMinLength = fc.Request.LocationMinLength
+	if cfg.LocationMinLength <= 0 {
+		cfg.LocationMinLength = 1
+	}
+	if s := strings.TrimSpace(os.Getenv("LOCATION_MIN_LENGTH")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+			cfg.LocationMinLength = n
+		}
+	}
 
 	cfg.WarmCache = false
 	if fc.Cache.WarmCache != nil {

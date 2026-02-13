@@ -84,12 +84,9 @@ See `docs/cache-design-plan.md` for design and health check behavior.
 | Field | Type | Description |
 |-------|------|-------------|
 | `ready_delay` | duration | Min uptime before declaring healthy (avoids starting-up flicker). `"3s"`, `"0s"` to skip. |
-| `overload_window` | duration | Sliding window for overload calculation |
-| `overload_threshold_pct` | int | Percent of `rate_limit_rps * overload_window`; exceeded → overloaded. Scales with `reliability.rate_limit_rps` for testing. |
-| `idle_threshold_req_per_min` | int | Requests/min below this for `idle_window` → status idle |
-| `idle_window` | duration | Sliding window for idle detection |
-| `minimum_lifespan` | duration | Min uptime before idle can be declared |
-| `degraded_window` | duration | Window for error-rate calculation |
+| `lifecycle_window` | duration | Single window for overload, idle, minimum uptime, and degraded (env: `LIFECYCLE_WINDOW`, default 60s) |
+| `overload_threshold_pct` | int | Percent of `rate_limit_rps * lifecycle_window`; exceeded → overloaded. Scales with `reliability.rate_limit_rps` for testing. |
+| `idle_threshold_req_per_min` | int | Requests/min below this for `lifecycle_window` → status idle |
 | `degraded_error_pct` | int | Error rate (errors/total in window) above this % → degraded |
 | `degraded_retry_initial` | duration | First delay; Fibonacci sequence builds from here |
 | `degraded_retry_max` | duration | Max delay; sequence caps here, then shutdown |
@@ -145,12 +142,9 @@ shutdown:
 
 lifecycle:
   ready_delay: "3s"
-  overload_window: "60s"
+  lifecycle_window: "60s"
   overload_threshold_pct: 80
   idle_threshold_req_per_min: 5
-  idle_window: "5m"
-  minimum_lifespan: "5m"
-  degraded_window: "60s"
   degraded_error_pct: 5
   degraded_retry_initial: "1m"
   degraded_retry_max: "13m"

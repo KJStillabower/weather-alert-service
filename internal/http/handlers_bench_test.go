@@ -22,7 +22,7 @@ func setupBenchmarkHandler() *Handler {
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
-	return NewHandler(weatherService, mockClient, nil, logger, nil)
+	return NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 }
 
 // setupBenchmarkHandlerWithCacheHit creates a handler with cache pre-populated.
@@ -43,7 +43,7 @@ func setupBenchmarkHandlerWithCacheHit() *Handler {
 	mockCache.Set(context.Background(), "seattle", testData, 5*time.Minute)
 	
 	logger, _ := zap.NewDevelopment()
-	return NewHandler(weatherService, mockClient, nil, logger, nil)
+	return NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 }
 
 // createBenchmarkRequest creates an HTTP request for benchmarking.
@@ -85,7 +85,7 @@ func BenchmarkHandler_GetWeather_CacheMiss(b *testing.B) {
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
@@ -107,7 +107,7 @@ func BenchmarkHandler_GetWeather_Error(b *testing.B) {
 	mockCache := &mockCache{data: make(map[string]models.WeatherData)}
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/weather/{location}", handler.GetWeather)
@@ -176,7 +176,7 @@ func BenchmarkHandler_GetHealth(b *testing.B) {
 	}
 	
 	logger, _ := observability.NewLogger()
-	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil)
+	handler := NewHandler(weatherService, mockClient, healthConfig, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/health", handler.GetHealth)

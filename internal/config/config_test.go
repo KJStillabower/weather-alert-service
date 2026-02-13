@@ -356,12 +356,9 @@ func TestLoad_LifecycleOverloadConfig(t *testing.T) {
 
 	lifecycleYAML := minimalEnvYAML + `
 lifecycle:
-  overload_window: "30s"
+  lifecycle_window: "30s"
   overload_threshold_pct: 90
   idle_threshold_req_per_min: 3
-  idle_window: "2m"
-  minimum_lifespan: "1m"
-  degraded_window: "60s"
   degraded_error_pct: 10
   degraded_retry_initial: "2m"
   degraded_retry_max: "15m"
@@ -377,8 +374,15 @@ lifecycle:
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.OverloadWindow != 30*time.Second {
-		t.Errorf("OverloadWindow = %v, want 30s", cfg.OverloadWindow)
+	wantWindow := 30 * time.Second
+	if cfg.OverloadWindow != wantWindow {
+		t.Errorf("OverloadWindow = %v, want %v", cfg.OverloadWindow, wantWindow)
+	}
+	if cfg.IdleWindow != wantWindow {
+		t.Errorf("IdleWindow = %v, want %v", cfg.IdleWindow, wantWindow)
+	}
+	if cfg.MinimumLifespan != wantWindow {
+		t.Errorf("MinimumLifespan = %v, want %v", cfg.MinimumLifespan, wantWindow)
 	}
 	if cfg.OverloadThresholdPct != 90 {
 		t.Errorf("OverloadThresholdPct = %d, want 90", cfg.OverloadThresholdPct)
@@ -386,14 +390,8 @@ lifecycle:
 	if cfg.IdleThresholdReqPerMin != 3 {
 		t.Errorf("IdleThresholdReqPerMin = %d, want 3", cfg.IdleThresholdReqPerMin)
 	}
-	if cfg.IdleWindow != 2*time.Minute {
-		t.Errorf("IdleWindow = %v, want 2m", cfg.IdleWindow)
-	}
-	if cfg.MinimumLifespan != 1*time.Minute {
-		t.Errorf("MinimumLifespan = %v, want 1m", cfg.MinimumLifespan)
-	}
-	if cfg.DegradedWindow != 60*time.Second {
-		t.Errorf("DegradedWindow = %v, want 60s", cfg.DegradedWindow)
+	if cfg.DegradedWindow != wantWindow {
+		t.Errorf("DegradedWindow = %v, want %v", cfg.DegradedWindow, wantWindow)
 	}
 	if cfg.DegradedErrorPct != 10 {
 		t.Errorf("DegradedErrorPct = %d, want 10", cfg.DegradedErrorPct)

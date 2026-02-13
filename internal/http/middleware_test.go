@@ -31,7 +31,7 @@ func TestMiddleware_ThroughHandler(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -62,7 +62,7 @@ func TestMiddleware_CorrelationIDPropagated(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -93,7 +93,7 @@ func TestMiddleware_MetricsRecordsNonOK(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -122,7 +122,7 @@ func TestMiddleware_HealthThroughChain(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -155,7 +155,7 @@ func TestTimeoutMiddleware_CancelsContextAfterTimeout(t *testing.T) {
 	weatherService := service.NewWeatherService(slowClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, slowClient, nil, logger, nil)
+	handler := NewHandler(weatherService, slowClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -186,7 +186,7 @@ func TestRateLimitMiddleware_Returns429WhenExceeded(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	limiter := rate.NewLimiter(1, 2)
 
@@ -240,7 +240,7 @@ func TestRateLimitMiddleware_DebugLogs_Denied(t *testing.T) {
 
 	core, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(core)
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	limiter := rate.NewLimiter(1, 1)
 
@@ -278,7 +278,7 @@ func TestRateLimitMiddleware_NilLimiterPassesThrough(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	router := mux.NewRouter()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -353,7 +353,7 @@ func TestSubrouter_WeatherRouteWithTimeoutAndRateLimit(t *testing.T) {
 	weatherService := service.NewWeatherService(mockClient, mockCache, 5*time.Minute, 0, false, 0)
 
 	logger, _ := zap.NewDevelopment()
-	handler := NewHandler(weatherService, mockClient, nil, logger, nil)
+	handler := NewHandler(weatherService, mockClient, nil, logger, nil, 100, 1)
 
 	limiter := rate.NewLimiter(10, 10)
 

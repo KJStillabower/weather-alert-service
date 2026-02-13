@@ -41,7 +41,7 @@ Enable load balancer and orchestration testing by exposing a `test/` endpoint th
 
 **Design notes:**
 
-- **load:** `POST /test/load` with `count` sends that many synthetic requests through the system logic (in-process; no API or cache calls). Exercises rate limiter, denial logic, etc when count exceeds rate limit. Overloaded when requests in window > rate_limit_rps × overload_window × (overload_threshold_pct/100).
+- **load:** `POST /test/load` with `count` sends that many synthetic requests through the system logic (in-process; no API or cache calls). Exercises rate limiter, denial logic, etc when count exceeds rate limit. Overloaded when requests in window > rate_limit_rps × lifecycle_window × (overload_threshold_pct/100).
 - **prevent_clear / fail_clear / clear:** Require the recovery goroutine to accept overrides (disable, force-fail, force-succeed) if in test mode.
 
 ## Request/Response Shape

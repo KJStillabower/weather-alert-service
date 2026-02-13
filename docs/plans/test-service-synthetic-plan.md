@@ -12,7 +12,7 @@ Add a `synthetic` command to `test-service.sh` that exercises five major functio
 
 **Prerequisites:** Service running with `testing_mode: true` (e.g. `ENV_NAME=dev`), config from `config/dev.yaml`.
 
-**Config (dev.yaml):** `rate_limit_rps=2`, `overload_window=60s`, `overload_threshold_pct=80`, `degraded_window=60s`, `degraded_error_pct=5`.
+**Config (dev.yaml):** `rate_limit_rps=2`, `lifecycle_window=60s`, `overload_threshold_pct=80`, `degraded_error_pct=5`.
 
 ---
 
@@ -20,7 +20,7 @@ Add a `synthetic` command to `test-service.sh` that exercises five major functio
 
 **Purpose:** Verify that synthetic load accumulates in the traffic window and triggers overload when exceeding the threshold.
 
-**Formula:** Overloaded when `total_requests_in_window > rate_limit_rps × overload_window × (overload_threshold_pct/100)` → `2 × 60 × 0.8 = 96`.
+**Formula:** Overloaded when `total_requests_in_window > rate_limit_rps × lifecycle_window × (overload_threshold_pct/100)` → `2 × 60 × 0.8 = 96`.
 
 ### Flow
 

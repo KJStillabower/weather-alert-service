@@ -3,9 +3,9 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/overload"
 	"github.com/kjstillabower/weather-alert-service/internal/service"
 	"github.com/kjstillabower/weather-alert-service/internal/traffic"
+	"github.com/kjstillabower/weather-alert-service/internal/validation"
 )
 
 // HealthConfig holds lifecycle thresholds for the health handler.
@@ -43,37 +44,53 @@ type HealthConfig struct {
 
 // Handler holds dependencies for HTTP handlers.
 type Handler struct {
-	weatherService   *service.WeatherService
-	client           client.WeatherClient
-	healthConfig     *HealthConfig
-	logger           *zap.Logger
-	rateLimiter      *rate.Limiter
-	healthStatusMu   sync.Mutex   // guards healthStatusPrev when logging health status transitions
-	healthStatusPrev string       // previous health status for transition logging
+	weatherService    *service.WeatherService
+	client            client.WeatherClient
+	healthConfig      *HealthConfig
+	logger            *zap.Logger
+	rateLimiter       *rate.Limiter
+	locationMaxLength int
+	locationMinLength int
+	healthStatusMu    sync.Mutex // guards healthStatusPrev when logging health status transitions
+	healthStatusPrev  string    // previous health status for transition logging
 }
 
-// NewHandler returns a new Handler.
+// NewHandler returns a new Handler. locationMaxLength and locationMinLength are used
+// to validate the location path parameter; use 0 for max to allow unbounded length
+// (not recommended). Min length of 1 is typical to reject empty/whitespace.
 func NewHandler(
 	weatherService *service.WeatherService,
 	client client.WeatherClient,
 	healthConfig *HealthConfig,
 	logger *zap.Logger,
 	rateLimiter *rate.Limiter,
+	locationMaxLength int,
+	locationMinLength int,
 ) *Handler {
+	if locationMaxLength <= 0 {
+		locationMaxLength = 100
+	}
+	if locationMinLength < 0 {
+		locationMinLength = 1
+	}
 	return &Handler{
-		weatherService: weatherService,
-		client:         client,
-		healthConfig:   healthConfig,
-		logger:         logger,
-		rateLimiter:    rateLimiter,
+		weatherService:    weatherService,
+		client:            client,
+		healthConfig:      healthConfig,
+		logger:            logger,
+		rateLimiter:       rateLimiter,
+		locationMaxLength: locationMaxLength,
+		locationMinLength: locationMinLength,
 	}
 }
 
 // GetWeather handles GET /weather/{location}.
 func (h *Handler) GetWeather(w http.ResponseWriter, r *http.Request) {
-	location := strings.TrimSpace(mux.Vars(r)["location"])
-	if location == "" || strings.TrimSpace(location) == "" {
-		writeError(w, r, http.StatusBadRequest, "INVALID_LOCATION", "location is required")
+	raw := mux.Vars(r)["location"]
+	location, err := validation.ValidateLocation(raw, h.locationMinLength, h.locationMaxLength)
+	if err != nil {
+		msg := validationErrorMessage(err)
+		writeError(w, r, http.StatusBadRequest, "INVALID_LOCATION", msg)
 		return
 	}
 
@@ -86,6 +103,22 @@ func (h *Handler) GetWeather(w http.ResponseWriter, r *http.Request) {
 	}
 	degraded.RecordSuccess()
 	writeJSON(w, http.StatusOK, result)
+}
+
+// validationErrorMessage returns a stable, human-readable message for validation errors.
+func validationErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, validation.ErrLocationEmpty):
+		return "location is required"
+	case errors.Is(err, validation.ErrLocationTooShort):
+		return "location too short"
+	case errors.Is(err, validation.ErrLocationTooLong):
+		return "location too long"
+	case errors.Is(err, validation.ErrLocationInvalidChars):
+		return "location contains invalid characters"
+	default:
+		return "invalid location"
+	}
 }
 
 // healthResult holds the computed health status and metadata for logging.

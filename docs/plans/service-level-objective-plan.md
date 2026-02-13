@@ -11,9 +11,9 @@ Define Service Level Indicators (SLIs) and Service Level Objectives (SLOs) deriv
 | `request` | `timeout` | Max request duration from a user for **GET /weather/{location}** endoint; handler returns 503 if exceeded |
 | `weather_api` | `timeout` | Max upstream call duration to external API; retries use same limit |
 | `reliability` | `rate_limit_rps`, `rate_limit_burst` | Capacity; requests above limit return 429 |
-| `lifecycle` | `overload_window`, `overload_threshold_pct` | Overload threshold: requests in window > rps × window × (pct/100) → 503 with status json object on /health |
-| `lifecycle` | `degraded_window`, `degraded_error_pct` | Error budget: error_count_total / total_requests ≥ pct inside degraded_window → degraded (503 on /health) |
-| `lifecycle` | `idle_threshold_req_per_min`, `idle_window`, `minimum_lifespan` | Idle signal: requests/min < threshold for window after minimum_lifespan |
+| `lifecycle` | `lifecycle_window`, `overload_threshold_pct` | Overload threshold: requests in window > rps × window × (pct/100) → 503 with status json object on /health |
+| `lifecycle` | `lifecycle_window` (degraded), `degraded_error_pct` | Error budget: error_count_total / total_requests ≥ pct inside lifecycle_window → degraded (503 on /health) |
+| `lifecycle` | `idle_threshold_req_per_min`, `lifecycle_window` | Idle signal: requests/min < threshold for lifecycle_window after lifecycle_window (min uptime) |
 | `cache` | `ttl` | Cache entry freshness; stale entries evicted |
 | `reliability` | `retry_max_attempts` | Resilience; transient errors retried up to N times |
 | `shutdown` | `timeout` | Grace period for in-flight requests before exit |
@@ -65,10 +65,10 @@ Upstream SLO: p95 < weather_api.timeout; alerts typically at p95 > 2s (see sampl
 
 **Source:** `internal/traffic` via `degraded.ErrorRate(window)`; exposed indirectly via `/health` status and `internal/degraded`
 
-**Config driver:** `lifecycle.degraded_window`, `lifecycle.degraded_error_pct`
+**Config driver:** `lifecycle.lifecycle_window` (degraded window), `lifecycle.degraded_error_pct`
 
 ```
-Error budget SLO: error_rate < degraded_error_pct in degraded_window
+Error budget SLO: error_rate < degraded_error_pct in lifecycle_window
 Breach: status = degraded; /health returns 503
 ```
 
@@ -78,10 +78,10 @@ Breach: status = degraded; /health returns 503
 
 **Source:** `rateLimitRequestsInWindow` (gauge), `rateLimitRejectsInWindow` (gauge); `overload.RequestCount(window)`, `overload.DenialCount(window)`
 
-**Config driver:** `lifecycle.overload_window`, `lifecycle.overload_threshold_pct`, `reliability.rate_limit_rps`
+**Config driver:** `lifecycle.lifecycle_window`, `lifecycle.overload_threshold_pct`, `reliability.rate_limit_rps`
 
 ```
-Capacity threshold = rate_limit_rps × overload_window × (overload_threshold_pct / 100)
+Capacity threshold = rate_limit_rps × lifecycle_window × (overload_threshold_pct / 100)
 Overload SLO: requests in window ≤ threshold
 Breach: status = overloaded; /health returns 503 (routing signal)
 ```
@@ -117,11 +117,11 @@ Cache SLO: target hit rate (e.g. > 80%) for cost/latency; config does not enforc
 
 | SLO | Config Keys | Target | Breach Signal |
 |-----|-------------|--------|---------------|
-| Availability | `degraded_window`, `degraded_error_pct` | Error rate < degraded_error_pct | status=degraded |
+| Availability | `lifecycle_window`, `degraded_error_pct` | Error rate < degraded_error_pct | status=degraded |
 | Request latency | `request.timeout` | p99 ≤ timeout | 503 (handler timeout) |
 | Upstream latency | `weather_api.timeout` | p95 < timeout | Upstream timeout/retry |
-| Error budget | `degraded_window`, `degraded_error_pct` | errors/total < pct | status=degraded |
-| Capacity | `overload_window`, `overload_threshold_pct`, `rate_limit_rps` | requests ≤ threshold | status=overloaded |
+| Error budget | `lifecycle_window`, `degraded_error_pct` | errors/total < pct | status=degraded |
+| Capacity | `lifecycle_window`, `overload_threshold_pct`, `rate_limit_rps` | requests ≤ threshold | status=overloaded |
 | Rate limit | `rate_limit_rps`, `rate_limit_burst` | Minimize 429s | 429 responses |
 | Cache | `cache.ttl` | Hit rate (observability) | No automatic breach |
 
@@ -134,8 +134,8 @@ Cache SLO: target hit rate (e.g. > 80%) for cost/latency; config does not enforc
 | TimeoutMiddleware | `request.timeout` | Hard limit on request duration |
 | RateLimitMiddleware | `rate_limit_rps`, `rate_limit_burst` | Capacity; 429 when exceeded |
 | MetricsMiddleware | — | Emits `httpRequestDurationSeconds`, `httpRequestsTotal` for SLI computation |
-| overload package | `overload_window` | `RequestCount(window)` for overload SLO |
-| degraded package | `degraded_window`, `degraded_error_pct` | Error rate for degraded SLO |
+| overload package | `lifecycle_window` (OverloadWindow) | `RequestCount(window)` for overload SLO |
+| degraded package | `lifecycle_window`, `degraded_error_pct` | Error rate for degraded SLO |
 | client (OpenWeather) | `weather_api.timeout`, `retry_max_attempts` | Upstream latency, resilience |
 
 ---

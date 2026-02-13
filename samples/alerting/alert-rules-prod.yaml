@@ -83,8 +83,8 @@ groups:
           runbook_url: "https://example.com/runbooks/rate-limit-rejections"
 
       # Rate limit requests approaching capacity: high request volume in window
-      # Prod: Tune based on production rate_limit_rps * overload_window config
-      # Example: if rate_limit_rps=100 and overload_window=60s, threshold might be 4800 (80% of 6000)
+      # Prod: Tune based on production rate_limit_rps * lifecycle_window config
+      # Example: if rate_limit_rps=100 and lifecycle_window=60s, threshold might be 4800 (80% of 6000)
       - alert: RateLimitRequestsHigh
         expr: rateLimitRequestsInWindow{job="weather-alert-service"} > 4800
         for: 3m
@@ -92,7 +92,7 @@ groups:
           severity: warning
         annotations:
           summary: "Rate limit requests approaching capacity"
-          description: "{{ $value }} requests in window; approaching rate limit capacity. Tune threshold based on rate_limit_rps * overload_window config."
+          description: "{{ $value }} requests in window; approaching rate limit capacity. Tune threshold based on rate_limit_rps * lifecycle_window config."
           runbook_url: "https://example.com/runbooks/rate-limit-capacity"
 
       # High 4xx error rate: client errors (bad requests, not found, etc.)

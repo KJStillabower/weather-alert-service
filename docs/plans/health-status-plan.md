@@ -22,13 +22,10 @@ Thresholds for status mapping live in `config/[env].yaml` under `lifecycle`. The
 ```yaml
 lifecycle:
   ready_delay: "3s"             # Min uptime before healthy (avoids starting-up flicker)
-  overload_window: "60s"        # Sliding window for overload calculation
+  lifecycle_window: "60s"       # Used for overload, idle, minimum uptime, and degraded window
   overload_threshold_pct: 80    # % of rate_limit_rps * window → overload if exceeded
   idle_threshold_req_per_min: 5 # Below this, consider idle
-  idle_window: "5m"             # Sliding window for idle calculation
-  minimum_lifespan: "5m"        # Min uptime before idle can be declared
-  degraded_window: "60s"        # Window for error-rate calculation
-  degraded_error_pct: 5        # Error rate (errors/total in window) above this % → degraded; scales with traffic
+  degraded_error_pct: 5         # Error rate (errors/total in lifecycle_window) above this % → degraded; scales with traffic
   degraded_retry_initial: "1m"   # First delay; Fibonacci builds from here
   degraded_retry_max: "20m"     # Max delay; sequence caps here, then shutdown
 ```
@@ -54,10 +51,10 @@ All durations use Go `time.ParseDuration` (`"s"`, `"m"`); scale for testing by c
 
 - **Signals:** Approaching capacity (proactive). Requests in window exceed threshold before we start denying.
 - **Implementation:** `internal/overload` sliding window of request timestamps (lifecycle) and denial timestamps (observability); `RecordRequest()` and `RecordDenial()` from middleware; `RequestCount(window)` and `DenialCount(window)`.
-- **Config:** `lifecycle.overload_window` (disable by setting 0)
+- **Config:** `lifecycle.lifecycle_window` (disable by setting 0)
 - **HTTP:** 503 with `status: overloaded`
 
-Overloaded when requests in window > rate_limit_rps × overload_window × (overload_threshold_pct/100).
+Overloaded when requests in window > rate_limit_rps × lifecycle_window × (overload_threshold_pct/100).
 
 **Overload: /health vs /weather**
 
@@ -109,10 +106,10 @@ The 503 on `/health` is a proactive signal to stop sending this instance more wo
 
 ### degraded (implemented)
 
-- **Signals:** API key validation fails on health probe; or error rate (errors/total in window) within `degraded_window` exceeds `degraded_error_pct`.
+- **Signals:** API key validation fails on health probe; or error rate (errors/total in window) within `lifecycle_window` exceeds `degraded_error_pct`.
 - **Implementation:** API key probe on each health check; `internal/degraded` sliding window of successes+errors for error-rate; Fibonacci recovery via `NotifyDegraded` and `StartRecoveryListener`.
 - **Data sources:** Health probe `ValidateAPIKey`; `RecordSuccess`/`RecordError` from weather handler.
-- **Config:** `lifecycle.degraded_window`, `lifecycle.degraded_error_pct`, `lifecycle.degraded_retry_initial`, `lifecycle.degraded_retry_max`.
+- **Config:** `lifecycle.lifecycle_window` (degraded window), `lifecycle.degraded_error_pct`, `lifecycle.degraded_retry_initial`, `lifecycle.degraded_retry_max`.
 - **HTTP:** 503 with `status: degraded`
 
 **Recovery from degraded**
@@ -121,9 +118,9 @@ When degraded (API key or error-rate), retry the startup routine (API key valida
 
 ### idle (implemented)
 
-- **Signals:** Uptime &gt; `minimum_lifespan` and weather-request rate below `idle_threshold_req_per_min` for `idle_window`.
+- **Signals:** Uptime &gt; `lifecycle_window` and weather-request rate below `idle_threshold_req_per_min` for `lifecycle_window`.
 - **Implementation:** `internal/idle` sliding window of weather-request timestamps.
-- **Config:** `lifecycle.idle_threshold_req_per_min`, `lifecycle.idle_window`, `lifecycle.minimum_lifespan` (disable by setting any to 0)
+- **Config:** `lifecycle.idle_threshold_req_per_min`, `lifecycle.lifecycle_window` (disable by setting window to 0)
 - **HTTP:** 200 with `status: idle`; LB can use for scale-down. Optional.
 
 ### shutting-down (implemented)
@@ -135,8 +132,8 @@ When degraded (API key or error-rate), retry the startup routine (API key valida
 ## Priority Order
 
 1. **shutting-down** — Done. Atomic flag in `internal/lifecycle`, wired in main, health checks it.
-2. **overloaded** — Done. Sliding window of requests (lifecycle) and denials (observability). Config `overload_window`, `overload_threshold_pct`. Gauges `rateLimitRequestsInWindow` and `rateLimitRejectsInWindow` on `/metrics`.
-3. **idle** — Done. Sliding window of weather requests, config `idle_window`, `minimum_lifespan`, `idle_threshold_req_per_min`.
+2. **overloaded** — Done. Sliding window of requests (lifecycle) and denials (observability). Config `lifecycle_window`, `overload_threshold_pct`. Gauges `rateLimitRequestsInWindow` and `rateLimitRejectsInWindow` on `/metrics`.
+3. **idle** — Done. Sliding window of weather requests, config `lifecycle_window`, `idle_threshold_req_per_min`.
 4. **degraded (error-rate + recovery)** — Done. Error rate % in window; `NotifyDegraded` triggers Fibonacci backoff recovery; exhausted → shutdown.
 5. **starting-up** — Defer; current startup validation makes it a narrow window.
 

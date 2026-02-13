@@ -44,7 +44,7 @@ func setupIntegrationHandler(t *testing.T) (*Handler, cache.Cache, func()) {
 
 	weatherClient := testhelpers.SetupIntegrationClient(t, cfg)
 
-	handler := NewHandler(weatherService, weatherClient, nil, testLogger, nil)
+	handler := NewHandler(weatherService, weatherClient, nil, testLogger, nil, 100, 1)
 
 	return handler, cacheSvc, cleanup
 }
@@ -57,7 +57,7 @@ func setupRateLimitedHandler(t *testing.T, rps int, burst int) (*Handler, cache.
 	weatherClient := testhelpers.SetupIntegrationClient(t, cfg)
 
 	limiter := rate.NewLimiter(rate.Limit(rps), burst)
-	handler := NewHandler(weatherService, weatherClient, nil, testLogger, limiter)
+	handler := NewHandler(weatherService, weatherClient, nil, testLogger, limiter, 100, 1)
 
 	return handler, cacheSvc, cleanup
 }
@@ -199,7 +199,7 @@ func TestIntegration_GetWeather_UpstreamError(t *testing.T) {
 
 	cacheSvc := cache.NewInMemoryCache()
 	weatherService := service.NewWeatherService(weatherClient, cacheSvc, 5*time.Minute)
-	handler := NewHandler(weatherService, weatherClient, nil, logger, nil)
+	handler := NewHandler(weatherService, weatherClient, nil, logger, nil, 100, 1)
 
 	// Act: Make request (should fail upstream)
 	w := makeIntegrationRequest(t, handler, "GET", "/weather/seattle")

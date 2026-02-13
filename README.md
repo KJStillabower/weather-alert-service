@@ -7,7 +7,7 @@ A production-ready backend service that provides weather data via REST API, inte
 ![Architecture](docs/architecture.png)
 
 **NOTES**
-- Design Documentation is elaborated in the [docs/](docs) folder.  Here there are a number of overviews detailing decision and implementation proceses to elaborate futher edits and expansions.
+- Design Documentation is elaborated in the [docs/](docs) folder.  Here there are a number of overviews detailing decision and implementation processes to elaborate further edits and expansions.
 - Overall [docs/about.md](docs/about.md) contains details on how this repo is setup and how to interact with design.
 
 
@@ -39,7 +39,7 @@ export ENV_NAME=dev_localcache
 
 Memcached is **strongly** recommended for production usage.  The implementation supports the use of a local in-memory cache to facilitate quicker start (e.g. testing or integration). Set ```backend: "in_memory"``` in the config (See: `config/dev_localcache.yaml`). The in-memory backend is not thread-safe and is intended for single-instance, dev/test use only; **production deployments must use memcached** for thread-safe, shared caching.  
 
-If you have a docker or kubernettes environment, there are build scripts in the [samples/containers]() location
+If you have a docker or kubernetes environment, there are build scripts in the [samples/containers]() directory.
 
 
 ### Installation
@@ -81,7 +81,7 @@ All other settings (port, timeouts, cache, retries, etc.) are in `config/[env].y
 go build -o bin/service ./cmd/service
 ```
 
-There is also test-service.sh for easy command-line automation.  See below for more on it's usage.
+There is also test-service.sh for easy command-line automation.  See below for more on its usage.
 
 ## Running the Service
 
@@ -351,7 +351,7 @@ When overloaded, the service can still serve traffic. 503 on `/health` is a rout
 Returns current weather data for the specified location.
 
 **Parameters:**
-- `location` (path) - City name (e.g., "seattle", "new york")
+- `location` (path) - City name or "city,country" (e.g., "seattle", "new york", "London,uk"). Validated before use: trimmed, length between min and max (configurable; default 1–100 characters), and allowed characters only (letters, digits, space, comma, hyphen). Invalid input returns `400` with `INVALID_LOCATION`.
 
 **Response:** `200 OK`
 ```json
@@ -366,7 +366,7 @@ Returns current weather data for the specified location.
 ```
 
 **Error Responses:**
-- `400 Bad Request` - Invalid location
+- `400 Bad Request` - Invalid location (empty, too short, too long, or disallowed characters). Error body: `error.code` = `INVALID_LOCATION`, `error.message` (e.g. "location is required", "location too long", "location contains invalid characters"), `error.requestId`.
 - `429 Too Many Requests` - Rate limit exceeded (config: `rate_limit_rps`, `rate_limit_burst`)
 - `503 Service Unavailable` - Upstream API unavailable or request timeout
 
@@ -420,6 +420,10 @@ Prometheus metrics endpoint for scraping. Returns application metrics plus proce
 | `requestTimeoutPropagatedTotal` | Counter | `propagated` | Requests where upstream timeout was derived from request context (`yes`/`no`). |
 | `cacheErrorsTotal` | Counter | `operation`, `type` | Cache errors by operation (get/set) and type (timeout, connection, unknown). |
 | `cacheOperationDurationSeconds` | Histogram | `operation`, `status` | Cache Get/Set duration; status success/error. |
+| `staleCacheServesTotal` | Counter | `location` | Responses served from stale cache when upstream failed. |
+| `staleCacheAgeSeconds` | Histogram | — | Age of stale cache entry when served. |
+| `requestCoalescingHitsTotal` | Counter | `location` | Requests that waited for and shared a coalesced upstream call. |
+| `requestCoalescingWaitSeconds` | Histogram | — | Time spent waiting for coalesced request result. |
 
 **Runtime metrics** (process_cpu_seconds_total, process_resident_memory_bytes, go_goroutines, etc.): standard Prometheus process and Go collectors. CPU utilization: `rate(process_cpu_seconds_total[1m])`.
 
@@ -434,7 +438,7 @@ scrape_configs:
 
 **Alerting samples:** `samples/alerting/` contains example `prometheus.yaml`, `alert-rules.yaml`, `recording-rules-slo.yaml` (SLO calculations), and `alertmanager.yaml` with PagerDuty and FireHydrant integration. Cache error alerts (e.g. `HighCacheErrorRate`, `CacheBackendDown`) are in the same alert rules file. See [docs/observability.md](docs/observability.md) for SLO tracking and recording rules.
 
-**Circuit breaker (optional):** When enabled via config (`circuit_breaker.enabled` or `CIRCUIT_BREAKER_ENABLED`), upstream weather API calls go through a circuit breaker. After a configurable number of failures the circuit opens and requests fail fast; after a timeout the circuit goes half-open and a success threshold closes it. Metrics: `circuitBreakerState`, `circuitBreakerTransitionsTotal`.
+**Circuit breaker (optional):** When enabled via config (`circuit_breaker.enabled` in `config/[env].yaml`), upstream weather API calls go through a circuit breaker. After a configurable number of failures the circuit opens and requests fail fast; after a timeout the circuit goes half-open and a success threshold closes it. Metrics: `circuitBreakerState`, `circuitBreakerTransitionsTotal`.
 
 **Request timeout propagation:** When a request has a deadline (e.g. from an upstream gateway), the weather client uses up to 90% of the remaining time for the upstream API call (capped by the configured client timeout, minimum 100ms). This keeps upstream calls within the request timeout budget. `requestTimeoutPropagatedTotal{propagated="yes"|"no"}` tracks whether the timeout was derived from context.
 
@@ -458,7 +462,7 @@ Structured logging (zap) with JSON output and ISO8601 timestamps. Logs are writt
 | `config/prod.yaml` | Production config |
 | `config/secrets.yaml` | API key only (gitignored) |
 
-The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in-memory dev. Add files (e.g. `config/staging.yaml`) as needed.
+The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in-memory dev. Add files (e.g. `config/staging.yaml`) as needed. Lifecycle (`lifecycle_window` etc.), circuit breaker, and shutdown timing are under `lifecycle`, `circuit_breaker`, and `shutdown` in YAML; only `lifecycle_window` has an env override (`LIFECYCLE_WINDOW`).
 
 **Optional:** Override `metrics.tracked_locations` in env YAML to customize which locations get per-location metrics (default: 100 cities; others increment `other`).
 
@@ -469,15 +473,12 @@ The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in
 | `ENV_NAME` | Which config file to load (`config/{ENV_NAME}.yaml`) | `dev` |
 | `WEATHER_API_KEY` | OpenWeatherMap API key (or set in `config/secrets.yaml`) | Required |
 | `LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`). Env var only; not in `config/*.yaml`. | `INFO` |
-| `SHUTDOWN_INFLIGHT_TIMEOUT` | Max time to wait for in-flight requests during shutdown | `5s` |
-| `SHUTDOWN_INFLIGHT_CHECK_INTERVAL` | Interval between in-flight count checks during shutdown | `100ms` |
-| `CIRCUIT_BREAKER_ENABLED` | Enable circuit breaker for upstream API calls | `false` |
-| `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Failures before opening circuit | `5` |
-| `CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | Successes in half-open before closing | `2` |
-| `CIRCUIT_BREAKER_TIMEOUT` | Time before half-open after open | `30s` |
 | `STALE_CACHE_MAX_AGE` | Maximum age for stale cache fallback (0 = disabled) | `1h` |
 | `REQUEST_COALESCE_ENABLED` | Enable request coalescing to prevent cache stampede | `true` |
 | `REQUEST_COALESCE_TIMEOUT` | Maximum wait time for coalesced request | `5s` |
+| `LOCATION_MAX_LENGTH` | Maximum rune length for `location` path parameter (DoS hardening) | `100` |
+| `LOCATION_MIN_LENGTH` | Minimum rune length for `location` after trim | `1` |
+| `LIFECYCLE_WINDOW` | Duration used for overload, idle, minimum lifespan, and degraded window (e.g. `60s`, `5m`) | `60s` |
 
 ### Production Considerations
 
@@ -502,7 +503,7 @@ The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in
    - In-flight request tracker: middleware counts active requests; shutdown waits for in-flight to reach zero (configurable timeout and check interval) before proceeding
    - Telemetry flush: logger synced after in-flight wait so logs are not lost
    - Memcached (if configured) closed after telemetry flush
-   - Config: `shutdown.in_flight_timeout`, `shutdown.in_flight_check_interval` (or env `SHUTDOWN_INFLIGHT_TIMEOUT`, `SHUTDOWN_INFLIGHT_CHECK_INTERVAL`)
+   - Config: `shutdown.in_flight_timeout`, `shutdown.in_flight_check_interval` in `config/[env].yaml`
 
 ## Lifecycle
 
@@ -518,7 +519,7 @@ The `/health` endpoint returns a lifecycle-aware status for load balancers, Kube
 
 **Overload vs degraded:** Overloaded means at capacity; the service still serves requests that get through. Degraded means producing or receiving errors; do not route. Cache unhealthy does not force degraded; it is reported in `checks.cache` only.
 
-**Formulas:** Overloaded when `requests in window > rate_limit_rps × overload_window × (overload_threshold_pct/100)`. Degraded when error rate in window exceeds `degraded_error_pct`. Idle when requests/min below `idle_threshold_req_per_min` for `idle_window` after `minimum_lifespan`.
+**Formulas:** Overloaded when `requests in window > rate_limit_rps × lifecycle_window × (overload_threshold_pct/100)`. Degraded when error rate in window exceeds `degraded_error_pct` (window = lifecycle_window). Idle when requests/min below `idle_threshold_req_per_min` for `lifecycle_window` after `lifecycle_window` (minimum uptime). Overload, idle, minimum uptime, and degraded window all use `lifecycle_window` (config: `lifecycle.lifecycle_window`, env: `LIFECYCLE_WINDOW`, default 60s).
 
 **Degraded recovery:** Fibonacci backoff from `degraded_retry_initial` to `degraded_retry_max`; exhaustion triggers `shutting-down`. 
 
@@ -579,4 +580,4 @@ For development and contribution guidelines, see `docs/about.md`.
 There is a plan document that wire-frames the load shedding principles that could be extended to reduce demand.  The lifecycle rate limits in place are designed to mitigate massive spikes and the implementation of a shared memcache would handle massive demand in our API.  However, it is conceivable that the design may benefit from expanded load shedding capabilities to reduce in-flight failures and prevent cascading demand failures through the stack.  Overall these are outlined in the docs, but were not addressed in this exercise due to time constraints.
 
 #### Distributed Tracing
-This was considered, but ultimately not pursued in this exercise.  It was prioritized to invest time in the testing and documentaiton tooling instead.  Much of distributed tracing require fact specific patterns of failure modes, architectures both up-stream and down stream, as well as broader observability infrastructure.  While that hasn't been attempted here, we are able to preserve some analysis in the plan docs for future iterations.
+This was considered, but ultimately not pursued in this exercise.  It was prioritized to invest time in the testing and documentation tooling instead.  Much of distributed tracing require fact specific patterns of failure modes, architectures both up-stream and down stream, as well as broader observability infrastructure.  While that hasn't been attempted here, we are able to preserve some analysis in the plan docs for future iterations.
