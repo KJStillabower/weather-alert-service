@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// TestFibDelays verifies that fibDelays generates Fibonacci sequence delays
+// up to the maximum delay value.
 func TestFibDelays(t *testing.T) {
 	delays := fibDelays(1*time.Minute, 13*time.Minute)
 	want := []time.Duration{1, 2, 3, 5, 8, 13}
@@ -22,6 +24,8 @@ func TestFibDelays(t *testing.T) {
 	}
 }
 
+// TestFibDelays_CapsAtMax verifies that fibDelays caps the last delay
+// at the maximum value rather than exceeding it.
 func TestFibDelays_CapsAtMax(t *testing.T) {
 	delays := fibDelays(1*time.Minute, 5*time.Minute)
 	if len(delays) < 2 {
@@ -33,6 +37,8 @@ func TestFibDelays_CapsAtMax(t *testing.T) {
 	}
 }
 
+// TestRunRecovery_Recovers verifies that RunRecovery successfully recovers
+// when validation eventually succeeds after retries.
 func TestRunRecovery_Recovers(t *testing.T) {
 	attempts := atomic.Int32{}
 	validate := func(ctx context.Context) error {
@@ -54,6 +60,8 @@ func TestRunRecovery_Recovers(t *testing.T) {
 	}
 }
 
+// TestRunRecovery_Exhausted verifies that RunRecovery calls onExhausted callback
+// when all retry attempts fail within the max elapsed time.
 func TestRunRecovery_Exhausted(t *testing.T) {
 	validate := func(ctx context.Context) error {
 		return errors.New("always fail")
@@ -68,6 +76,8 @@ func TestRunRecovery_Exhausted(t *testing.T) {
 	}
 }
 
+// TestSetRecoveryDisabled_IsRecoveryDisabled verifies that recovery disabled
+// state can be set and queried correctly.
 func TestSetRecoveryDisabled_IsRecoveryDisabled(t *testing.T) {
 	defer ClearRecoveryOverrides()
 
@@ -82,6 +92,8 @@ func TestSetRecoveryDisabled_IsRecoveryDisabled(t *testing.T) {
 	}
 }
 
+// TestClearRecoveryOverrides verifies that ClearRecoveryOverrides resets
+// all recovery override flags to their default state.
 func TestClearRecoveryOverrides(t *testing.T) {
 	SetRecoveryDisabled(true)
 	SetForceFailNextAttempt(true)
@@ -94,6 +106,8 @@ func TestClearRecoveryOverrides(t *testing.T) {
 	}
 }
 
+// TestSetForceFailNextAttempt_SetForceSucceedNextAttempt verifies that force
+// flags allow test control over recovery behavior without executing validation.
 func TestSetForceFailNextAttempt_SetForceSucceedNextAttempt(t *testing.T) {
 	defer ClearRecoveryOverrides()
 
@@ -133,6 +147,8 @@ func TestSetForceFailNextAttempt_SetForceSucceedNextAttempt(t *testing.T) {
 	})
 }
 
+// TestRunRecovery_RecoveryDisabled verifies that RunRecovery returns immediately
+// without calling validate when recovery is disabled.
 func TestRunRecovery_RecoveryDisabled(t *testing.T) {
 	defer ClearRecoveryOverrides()
 
@@ -149,6 +165,8 @@ func TestRunRecovery_RecoveryDisabled(t *testing.T) {
 	}
 }
 
+// TestGetAndAdvanceNextRecoveryDelay verifies that GetAndAdvanceNextRecoveryDelay
+// returns Fibonacci sequence delays and signals exhaustion when sequence completes.
 func TestGetAndAdvanceNextRecoveryDelay(t *testing.T) {
 	defer ClearRecoveryOverrides()
 
@@ -174,10 +192,14 @@ func TestGetAndAdvanceNextRecoveryDelay(t *testing.T) {
 	}
 }
 
+// TestNotifyDegraded_NoListener verifies that NotifyDegraded does not panic
+// when no recovery listener is registered.
 func TestNotifyDegraded_NoListener(t *testing.T) {
 	NotifyDegraded()
 }
 
+// TestStartRecoveryListener_NotifyDegraded verifies that StartRecoveryListener
+// triggers recovery when NotifyDegraded is called.
 func TestStartRecoveryListener_NotifyDegraded(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -203,6 +225,8 @@ func TestStartRecoveryListener_NotifyDegraded(t *testing.T) {
 	}
 }
 
+// TestStartRecoveryListener_ContextCancel verifies that StartRecoveryListener
+// stops listening when context is cancelled, preventing recovery execution.
 func TestStartRecoveryListener_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

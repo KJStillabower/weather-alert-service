@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// TestMetrics_Usable verifies that all Prometheus metrics can be used without
+// panic, ensuring label dimensions match usage across client, http, service, and cache packages.
 func TestMetrics_Usable(t *testing.T) {
 	// Verify metrics can be used without panic; label dimensions match usage in client, http, service, cache
 	// Route uses path template to avoid cardinality (e.g. /weather/{location} not /weather/seattle)
@@ -21,6 +23,8 @@ func TestMetrics_Usable(t *testing.T) {
 	WeatherQueriesByLocationTotal.WithLabelValues("other").Inc()
 }
 
+// TestSetTrackedLocations_and_RecordWeatherQuery verifies that SetTrackedLocations
+// configures location allow-list and RecordWeatherQuery correctly labels tracked vs "other" locations.
 func TestSetTrackedLocations_and_RecordWeatherQuery(t *testing.T) {
 	SetTrackedLocations([]string{"seattle", "portland"})
 	RecordWeatherQuery("Seattle")
@@ -28,6 +32,8 @@ func TestSetTrackedLocations_and_RecordWeatherQuery(t *testing.T) {
 	SetTrackedLocations(nil) // reset for other tests
 }
 
+// TestMetricsHandler_ServesPrometheusFormat verifies that MetricsHandler serves
+// Prometheus text exposition format with correct HTTP status and metric output.
 func TestMetricsHandler_ServesPrometheusFormat(t *testing.T) {
 	handler := MetricsHandler()
 	req := httptest.NewRequest("GET", "/metrics", nil)

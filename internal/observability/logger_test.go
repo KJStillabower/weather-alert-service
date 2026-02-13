@@ -7,6 +7,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TestParseLogLevel verifies that parseLogLevel correctly parses log level
+// strings from environment variables, handling case-insensitivity and whitespace.
 func TestParseLogLevel(t *testing.T) {
 	tests := []struct {
 		env    string
@@ -29,6 +31,8 @@ func TestParseLogLevel(t *testing.T) {
 	}
 }
 
+// TestNewLogger verifies that NewLogger creates a valid logger instance
+// that can be used for logging operations.
 func TestNewLogger(t *testing.T) {
 	logger, err := NewLogger()
 	if err != nil {

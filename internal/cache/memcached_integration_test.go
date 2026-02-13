@@ -11,6 +11,8 @@ import (
 	"github.com/kjstillabower/weather-alert-service/internal/models"
 )
 
+// TestMemcachedCache_GetSet_Integration verifies that MemcachedCache successfully
+// stores and retrieves values when memcached server is available.
 func TestMemcachedCache_GetSet_Integration(t *testing.T) {
 	c, err := NewMemcachedCache("localhost:11211", 500*time.Millisecond, 2)
 	if err != nil {
@@ -36,6 +38,8 @@ func TestMemcachedCache_GetSet_Integration(t *testing.T) {
 	}
 }
 
+// TestMemcachedCache_Get_Miss_Integration verifies that MemcachedCache returns
+// ok=false when requested key does not exist in memcached.
 func TestMemcachedCache_Get_Miss_Integration(t *testing.T) {
 	c, err := NewMemcachedCache("localhost:11211", 500*time.Millisecond, 2)
 	if err != nil {
