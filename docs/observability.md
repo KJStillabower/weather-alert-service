@@ -127,24 +127,18 @@ This section lists log events that can be generated in each code path. No log ev
 | Log Event | Level | When | Fields |
 |-----------|-------|------|--------|
 | `upstream error` | DEBUG | Weather fetch fails (503 to client) | `error` |
-| (none) | — | Success, cache hit, rate limit 429 | — |
 
-Routine success, cache hits, and 429 responses are not logged.
+Routine success, cache hits, and 429 responses are not sent to the log. They are covered by metrics and health status.
 
 #### GET /health
 
 | Log Event | Level | When | Fields |
 |-----------|-------|------|--------|
 | `health status transition` | INFO | Status changes (e.g. healthy -> degraded, overloaded -> healthy) | `previous_status`, `current_status`, `reason` |
-| (none) | — | Routine probe; status unchanged | — |
 
 Reasons: `api_key_invalid`, `error_rate_breach`, `overload_threshold`, `signal` (shutting-down), `low_traffic` (idle). Routine probes when status is unchanged produce no logs.
 
 #### GET /metrics
-
-| Log Event | Level | When | Fields |
-|-----------|-------|------|--------|
-| (none) | — | All | — |
 
 Metrics probes produce no application logs.
 
@@ -169,6 +163,7 @@ When leveraged, they may trigger other code-paths but will also trigger a startu
 
 | Log Event | Level | When | Fields |
 |-----------|-------|------|--------|
+| `graceful shutdown triggered` | INFO | SIGTERM/SIGINT received; draining begins | — |
 | `shutdown` | ERROR | Server shutdown exceeds timeout | `error` |
 | `memcached close` | ERROR | Memcached Close() fails | `error` |
 
