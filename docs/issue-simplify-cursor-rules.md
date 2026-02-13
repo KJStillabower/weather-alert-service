@@ -64,6 +64,12 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 **Result:** Smaller rule files, examples available when needed
 
+## Risks
+
+- **Breaking changes:** If rules are referenced in code/comments, consolidation could break references
+- **Lost nuance:** Merging might lose important distinctions
+- **Testing:** Need to verify AI behavior doesn't regress after simplification
+
 ## Recommended Approach
 
 **Combine Options 1 + 2 + 3:**
@@ -85,13 +91,98 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 - [ ] Cross-references minimized or removed
 - [ ] Documentation updated if rule structure changes
 
-## Risks
-
-- **Breaking changes:** If rules are referenced in code/comments, consolidation could break references
-- **Lost nuance:** Merging might lose important distinctions
-- **Testing:** Need to verify AI behavior doesn't regress after simplification
-
 ## References
 
 - Current rules: `.cursor/rules/*.mdc`
 - Rule standards: `.cursor/rules/020-rule-standards.mdc`
+
+## Risk Mitigation
+
+### Code Scan of Rule Syntax
+
+#### Summary
+
+**No code references:** No `.go` files reference rule files.
+
+**Documentation references:** Found in markdown files only.
+
+#### External References by File
+
+##### docs/About.md
+**Lines 71-83:** Lists all 14 rules in a table:
+- `000-goal.mdc`
+- `010-role.mdc`
+- `020-rule-standards.mdc`
+- `021-change-control.mdc`
+- `030-service-pattern.mdc`
+- `040-testing.mdc`
+- `050-observability.mdc`
+- `060-reliability.mdc`
+- `070-api-contract.mdc`
+- `080-go-patterns.mdc`
+- `090-security.mdc`
+- `100-communication.mdc`
+- `101-documentation.mdc`
+
+**Impact:** If rules are consolidated/renamed, this table needs updating.
+
+##### docs/observability.md
+**Line 114:** `see 090-security.mdc` (inline reference)
+**Line 306:** `050-observability.mdc` (in References table)
+
+**Impact:** Low - inline references can be updated or removed if content is merged.
+
+##### docs/issue-health-state-transition-logging.md
+**Line 11:** `Per 050-observability.mdc` (rationale reference)
+
+**Impact:** Low - reference provides context but not critical.
+
+##### docs/issue-improved-observability-documentation.md
+**Lines 29, 38, 111:** `050-observability.mdc` (source citations)
+
+**Impact:** Low - historical reference in issue doc.
+
+##### docs/issue-simplify-cursor-rules.md
+**Multiple lines:** References many rules (this is the simplification issue itself)
+
+**Impact:** N/A - this doc will be updated as part of simplification.
+
+#### Cross-References Within Rules
+
+Rules reference each other extensively:
+- `010-role.mdc` → `000-goal.mdc`, `090-security.mdc`
+- `030-service-pattern.mdc` → `000-goal.mdc`, `040-testing.mdc`
+- `040-testing.mdc` → `060-reliability.mdc`, `070-api-contract.mdc`
+- `050-observability.mdc` → `000-goal.mdc`, `090-security.mdc`
+- `060-reliability.mdc` → `040-testing.mdc`, `050-observability.mdc`
+- `070-api-contract.mdc` → `040-testing.mdc`
+- `080-go-patterns.mdc` → `070-api-contract.mdc`, `050-observability.mdc`, `090-security.mdc`, `040-testing.mdc`
+- `021-change-control.mdc` → `100-communication.mdc`, `090-security.mdc`, `050-observability.mdc`, `060-reliability.mdc`
+- `101-documentation.mdc` → `070-api-contract.mdc`
+
+**Impact:** High - consolidation will require updating these cross-references or removing them.
+
+#### Findings
+
+1. **No code dependencies:** No `.go` files reference rules. Safe to consolidate without breaking code.
+2. **Documentation only:** References are in markdown docs, easily updated.
+3. **Most referenced rules:**
+   - `050-observability.mdc` - Referenced in 4 external docs + multiple rules
+   - `040-testing.mdc` - Referenced in 3 rules
+   - `090-security.mdc` - Referenced in 3 rules + 1 external doc
+   - `000-goal.mdc` - Referenced in 3 rules (core scope)
+   - `070-api-contract.mdc` - Referenced in 2 rules + 1 external doc
+4. **Least referenced:** `022-preserve-existing.mdc`, `060-reliability.mdc` (only in rules, not external docs)
+
+#### Consolidation Safety
+
+**Safe to consolidate:**
+- Rules with no external references: `022-preserve-existing.mdc`, `060-reliability.mdc`
+- Rules only referenced in other rules: Most can be merged if cross-refs are updated
+
+**Requires doc updates:**
+- `docs/About.md` - Update rule list table
+- `docs/observability.md` - Update inline references
+- Cross-references within rules themselves
+
+**Recommendation:** Consolidation is safe; only documentation updates needed. No code changes required.
