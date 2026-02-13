@@ -1,8 +1,8 @@
 ---
 description: Observability patterns for Prometheus metrics, structured logging, and correlation IDs
-alwaysApply: true
-version: 1.1.1
-lastUpdated: 2026-02-11
+globs: **/observability/**
+version: 1.2.0
+lastUpdated: 2026-02-12
 ---
 
 # Observability Rules

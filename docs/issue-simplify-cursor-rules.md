@@ -9,11 +9,13 @@
 - Consolidated `100-communication.mdc` + `021-change-control.mdc` + `101-documentation.mdc` → `100-documentation-communication.mdc`
 - Removed `020-rule-standards.mdc` (unnecessary meta-rule)
 - Updated `040-testing.mdc` to use `globs: **/*_test.go` instead of `alwaysApply: true`
+- Updated `050-observability.mdc` to use `globs: **/observability/**` instead of `alwaysApply: true`
+- Updated `070-api-contract.mdc` to use `globs: **/http/**` instead of `alwaysApply: true`
 - Enhanced `040-testing.mdc` with inline test documentation example
 - Updated `docs/About.md` to reflect new rule structure
 
 **Remaining:**
-- Reduce `alwaysApply: true` scope for other rules (currently 10 files still use `alwaysApply`)
+- Evaluate remaining `alwaysApply: true` rules: `030-patterns.mdc`, `060-reliability.mdc`, `100-documentation-communication.mdc` (could potentially be context-specific)
 - Extract verbose examples from rules (if needed)
 
 ## Summary
@@ -22,17 +24,20 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 ## Current State
 
-- **11 rule files** (reduced from 14), 10 still use `alwaysApply: true` (~2174 lines total)
+- **11 rule files** (reduced from 14), 7 still use `alwaysApply: true` (4 core + 3 others), 3 context-specific (~2174 lines total)
 - **Cross-references:** Rules reference each other (e.g., "per 040-testing.mdc", "see 090-security.mdc")
 - **Consolidated:** `030-patterns.mdc` (merged 030+080), `100-documentation-communication.mdc` (merged 100+021+101)
-- **Context-specific:** `040-testing.mdc` now uses `globs: **/*_test.go` instead of `alwaysApply: true` (loads only when editing test files)
+- **Context-specific:** 
+  - `040-testing.mdc` uses `globs: **/*_test.go` (loads only when editing test files)
+  - `050-observability.mdc` uses `globs: **/observability/**` (loads only when editing observability code)
+  - `070-api-contract.mdc` uses `globs: **/http/**` (loads only when editing HTTP handlers)
 - **Enhanced:** `040-testing.mdc` includes inline test documentation example
 - **Removed:** `020-rule-standards.mdc` (unnecessary meta-rule)
-- **Token cost:** Reduced baseline overhead with context-specific rules (1 rule now context-specific)
+- **Token cost:** Reduced baseline overhead with 3 context-specific rules (load only when relevant files are edited)
 
 ## Problems
 
-1. **High overhead:** 10 files still loaded into context every request (reduced from 14)
+1. **High overhead:** 7 files still loaded into context every request (4 core + 3 others; reduced from 14)
 2. **Context confusion:** Cross-references create circular dependencies; unclear which rule takes precedence
 3. **Redundancy:** Same patterns explained in multiple places (e.g., handlers in both 030 and 080)
 4. **Maintenance burden:** Version tracking, `lastUpdated` dates need constant updates
@@ -53,13 +58,14 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 **Keep `alwaysApply: true` for:**
 - `000-goal.mdc` - Core scope
 - `010-role.mdc` - AI behavior
-- `022-preserve-existing.mdc` - Critical safety rule
+- `001-preserve-existing.mdc` - Critical safety rule
+- `090-security.mdc` - Security is cross-cutting (secrets/config/logging/git apply everywhere)
 
 **Make context-specific:**
 - ✅ `040-testing.mdc` - Only when editing `*_test.go` files (`globs: **/*_test.go`) **COMPLETED**
-- `050-observability.mdc` - Only when editing observability code (`globs: **/observability/**`)
-- `070-api-contract.mdc` - Only when editing handlers (`globs: **/http/**`)
-- `090-security.mdc` - Only when editing code that touches secrets/config
+- ✅ `050-observability.mdc` - Only when editing observability code (`globs: **/observability/**`) **COMPLETED**
+- ✅ `070-api-contract.mdc` - Only when editing handlers (`globs: **/http/**`) **COMPLETED**
+- ✅ `090-security.mdc` - Keep as `alwaysApply: true` (security is cross-cutting, applies everywhere) **DECISION: KEEP ALWAYS-APPLY**
 
 **Result:** 3 always-apply + context-specific = lower baseline overhead
 
@@ -91,17 +97,17 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 **Combine Options 1 + 2 + 3:**
 
 1. ✅ **Merge overlapping rules** (14 → 11 files) **COMPLETED**
-2. 🔄 **Reduce always-apply** (3 core + context-specific) **IN PROGRESS** - `040-testing.mdc` updated
+2. 🔄 **Reduce always-apply** (3 core + context-specific) **IN PROGRESS** - 3 rules now context-specific (`040`, `050`, `070`)
 3. ✅ **Simplify meta-rules** (drop version tracking overhead) **COMPLETED** - `020-rule-standards.mdc` removed
 4. [ ] **Extract verbose examples** (keep rules concise)
 
-**Target:** ~800-1000 lines total, 3 always-apply rules, clearer boundaries
+**Target:** ~800-1000 lines total, 4 core always-apply rules (goal, role, preserve-existing, security), clearer boundaries
 
 ## Acceptance Criteria
 
 - [x] Overlapping rules consolidated (030+080 → `030-patterns.mdc`, 100+021+101 → `100-documentation-communication.mdc`)
-- [ ] Only 3 core rules marked `alwaysApply: true` (currently 10 still use `alwaysApply`)
-- [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc` updated)
+- [ ] Only 4 core rules marked `alwaysApply: true` (currently: `000-goal`, `010-role`, `001-preserve-existing`, `090-security`; 3 others still use `alwaysApply`: `030-patterns`, `060-reliability`, `100-documentation-communication`)
+- [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc` updated)
 - [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed)
 - [ ] Total rule lines reduced by ~40-50%
 - [ ] Cross-references minimized or removed
