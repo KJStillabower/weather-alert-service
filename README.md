@@ -313,6 +313,8 @@ Service health and readiness check.
 
 ### GET /metrics
 
+**Full observability guide:** [docs/observability.md](docs/observability.md) — metrics, PromQL cookbook, logging, correlation IDs, health lifecycle, alerts, runbooks.
+
 Prometheus metrics endpoint for scraping. Returns application metrics plus process/runtime (CPU, memory, goroutines) for observability.
 
 **Response:** `200 OK` (Content-Type: `text/plain; version=0.0.4`)
@@ -424,6 +426,8 @@ The `/health` endpoint returns a lifecycle-aware status for load balancers, Kube
 
 
 ## Troubleshooting
+
+**Troubleshooting with observability:** Use correlation IDs (`X-Correlation-ID` in response) to trace requests through logs. See [docs/observability.md](docs/observability.md) for PromQL queries, when to investigate, and alert runbooks.
 
 ### Service Won't Start
 

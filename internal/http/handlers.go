@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -42,11 +43,13 @@ type HealthConfig struct {
 
 // Handler holds dependencies for HTTP handlers.
 type Handler struct {
-	weatherService *service.WeatherService
-	client         client.WeatherClient
-	healthConfig   *HealthConfig
-	logger         *zap.Logger
-	rateLimiter    *rate.Limiter
+	weatherService   *service.WeatherService
+	client           client.WeatherClient
+	healthConfig     *HealthConfig
+	logger           *zap.Logger
+	rateLimiter      *rate.Limiter
+	healthStatusMu   sync.Mutex
+	healthStatusPrev string
 }
 
 // NewHandler returns a new Handler.
@@ -85,9 +88,30 @@ func (h *Handler) GetWeather(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// healthResult holds the computed health status and metadata for logging.
+type healthResult struct {
+	status     string
+	statusCode int
+	reason     string
+}
+
 // GetHealth handles GET /health.
 func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	status, statusCode := h.computeHealthStatus(r.Context())
+	result := h.computeHealthStatus(r.Context())
+
+	h.healthStatusMu.Lock()
+	prev := h.healthStatusPrev
+	if prev != "" && prev != result.status {
+		h.logger.Info("health status transition",
+			zap.String("previous_status", prev),
+			zap.String("current_status", result.status),
+			zap.String("reason", result.reason))
+	}
+	h.healthStatusPrev = result.status
+	h.healthStatusMu.Unlock()
+
+	status := result.status
+	statusCode := result.statusCode
 	checks := make(map[string]string)
 	if status == "degraded" {
 		checks["weatherApi"] = "unhealthy"
@@ -113,26 +137,26 @@ func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *Handler) computeHealthStatus(ctx context.Context) (string, int) {
+func (h *Handler) computeHealthStatus(ctx context.Context) healthResult {
 	if lifecycle.IsShuttingDown() {
-		return "shutting-down", http.StatusServiceUnavailable
+		return healthResult{"shutting-down", http.StatusServiceUnavailable, "signal"}
 	}
 	if h.healthConfig == nil {
 		if err := h.client.ValidateAPIKey(ctx); err != nil {
-			return "degraded", http.StatusServiceUnavailable
+			return healthResult{"degraded", http.StatusServiceUnavailable, "api_key_invalid"}
 		}
-		return "healthy", http.StatusOK
+		return healthResult{"healthy", http.StatusOK, ""}
 	}
 	if err := h.client.ValidateAPIKey(ctx); err != nil {
-		return "degraded", http.StatusServiceUnavailable
+		return healthResult{"degraded", http.StatusServiceUnavailable, "api_key_invalid"}
 	}
 	threshold := float64(h.healthConfig.RateLimitRPS) * h.healthConfig.OverloadWindow.Seconds() * float64(h.healthConfig.OverloadThresholdPct) / 100
 	if float64(overload.RequestCount(h.healthConfig.OverloadWindow)) > threshold {
-		return "overloaded", http.StatusServiceUnavailable
+		return healthResult{"overloaded", http.StatusServiceUnavailable, "overload_threshold"}
 	}
 	if h.healthConfig.IdleWindow > 0 && h.healthConfig.MinimumLifespan > 0 && time.Since(h.healthConfig.StartTime) >= h.healthConfig.MinimumLifespan {
 		if idle.RequestCount(h.healthConfig.IdleWindow) < h.healthConfig.IdleThresholdReqPerMin {
-			return "idle", http.StatusOK
+			return healthResult{"idle", http.StatusOK, "low_traffic"}
 		}
 	}
 	if h.healthConfig.DegradedWindow > 0 && h.healthConfig.DegradedErrorPct > 0 {
@@ -140,11 +164,11 @@ func (h *Handler) computeHealthStatus(ctx context.Context) (string, int) {
 		if total > 0 {
 			pct := float64(errors) * 100 / float64(total)
 			if pct >= float64(h.healthConfig.DegradedErrorPct) {
-				return "degraded", http.StatusServiceUnavailable
+				return healthResult{"degraded", http.StatusServiceUnavailable, "error_rate_breach"}
 			}
 		}
 	}
-	return "healthy", http.StatusOK
+	return healthResult{"healthy", http.StatusOK, ""}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -258,7 +282,8 @@ func (h *Handler) postTestLoad(w http.ResponseWriter, r *http.Request) {
 		}
 		accepted = body.Count
 	}
-	status, _ := h.computeHealthStatus(r.Context())
+	result := h.computeHealthStatus(r.Context())
+	status := result.status
 	msg := "Recorded " + strconv.Itoa(accepted) + " accepted"
 	if denied > 0 {
 		msg += ", " + strconv.Itoa(denied) + " denied"
@@ -290,12 +315,12 @@ func (h *Handler) postTestError(w http.ResponseWriter, r *http.Request) {
 	if total > 0 {
 		pct = errors * 100 / total
 	}
-	status, _ := h.computeHealthStatus(r.Context())
+	result := h.computeHealthStatus(r.Context())
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":            true,
 		"action":        "error",
 		"message":       "Recorded " + strconv.Itoa(body.Count) + " errors",
-		"state":         status,
+		"state":         result.status,
 		"error_rate_pct": pct,
 	})
 }

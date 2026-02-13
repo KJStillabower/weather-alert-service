@@ -42,3 +42,9 @@ lifecycle:
   degraded_error_pct: 5
   degraded_retry_initial: "1m"
   degraded_retry_max: "13m"
+
+#Excluded metrics, takes the default from the config class
+# metrics:
+#   tracked_locations:
+#     - new york 
+# ...etc.

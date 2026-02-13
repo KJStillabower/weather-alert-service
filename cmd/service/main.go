@@ -127,6 +127,7 @@ func main() {
 	<-ctx.Done()
 	stop()
 
+	logger.Info("graceful shutdown triggered")
 	lifecycle.SetShuttingDown(true)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
