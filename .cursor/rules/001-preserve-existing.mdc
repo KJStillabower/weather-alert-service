@@ -11,30 +11,29 @@ alwaysApply: true
 
 ## Before Creating or Replacing Files
 
-1. **Check if the file exists** – Use `Read`, `Glob`, or `Grep` to confirm. Do not assume a file is missing because it was not in recent context.
-2. **Read the existing content** – If the file exists, read it fully before any edit.
-3. **Understand the current behavior** – Note what the code does, how it is wired, what config it uses. Do not replace working patterns with different approaches without explicit request.
+**Always:** Check if file exists (`Read`, `Glob`, `Grep`), read existing content fully, understand current behavior (what it does, how wired, what config). Do not replace working patterns without explicit request.
 
 ## When Adding or Fixing Something
 
-| Action | Do | Do Not |
-|--------|-----|--------|
-| Adding a feature | Read related files; integrate with existing patterns; make minimal targeted changes | Rewrite entire modules; introduce a new pattern that conflicts with existing code |
-| Fixing a bug | Identify the specific failing path; change only what is necessary | Refactor unrelated code "while you're there" |
-| Replacing missing code | Verify it is actually missing; check if similar logic exists elsewhere; match existing style | Assume nothing exists and create from scratch; overwrite files that might have been there |
-| Wiring dependencies | Follow existing wiring patterns (e.g. config loading, env vars) | Replace config/dependency approach without explicit request |
+**Do:**
+- Read related files; integrate with existing patterns; make minimal, targeted changes
+- Identify the specific failing path; ask questions if unsure; change only what's necessary
+- Verify code is actually missing; check if similar logic exists elsewhere; match existing style
+- Follow existing wiring patterns (e.g. config loading, env vars)
+
+**Don't:**
+- Rewrite entire modules; introduce a new pattern that conflicts with existing code
+- Refactor unrelated code because it's nearby, or you could improve it slightly
+- Assume nothing exists and create from scratch; overwrite files that might have been there
+- Replace config/dependency approach without explicit request
 
 ## Config and Project Structure
 
-- **Respect existing config** – If the project uses YAML config, env files, or secrets, use them. Do not replace with env-only or hardcoded defaults unless explicitly asked.
-- **Preserve project layout** – Do not relocate files, rename packages, or change directory structure without explicit request.
-- **Match conventions** – Follow how the project already loads config, wires handlers, and structures packages.
+Respect existing config (YAML/env/secrets), preserve project layout, match existing conventions. Do not replace approaches without explicit request.
 
 ## Pace and Deliberation
 
-- **Read before writing** – When touching a file, read it first. For multi-file changes, read the relevant files before planning edits.
-- **One concern per change** – Avoid bundling unrelated fixes or refactors. If the user asks to fix X, fix X. Do not "also improve" Y and Z.
-- **Confirm scope** – If a request is ambiguous and could affect working code, ask or propose a minimal approach before making broad changes.
+Read files before editing. One concern per change. If ambiguous, ask or propose minimal approach before broad changes.
 
 ## Examples
 

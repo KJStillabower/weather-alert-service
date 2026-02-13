@@ -69,13 +69,15 @@ Weather/
 This project uses Cursor rules (`.cursor/rules/*.mdc`) to guide AI-assisted development:
 
 - `000-goal.mdc` - Project scope and priorities
+- `001-preserve-existing.mdc` - Critical safety rule (preserve existing work)
 - `010-role.mdc` - AI assistant collaboration approach
+- `020-security.mdc` - Security best practices
 - `030-patterns.mdc` - Go language patterns and service architecture
 - `040-testing.mdc` - Testing standards and patterns
 - `050-observability.mdc` - Metrics and logging patterns
 - `060-reliability.mdc` - Reliability patterns (retries, timeouts, rate limits)
 - `070-api-contract.mdc` - API endpoint contracts
-- `090-security.mdc` - Security best practices
+- `020-security.mdc` - Security best practices
 - `100-documentation-communication.mdc` - Communication, git commits, and documentation standards
 
 **For AI assistants:** Read these rules to understand project standards, patterns, and priorities before making changes.

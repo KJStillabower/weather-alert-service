@@ -19,14 +19,14 @@
 - Evaluate remaining `alwaysApply: true` rules: `030-patterns.mdc`, `060-reliability.mdc`, `100-documentation-communication.mdc` (could potentially be context-specific)
 - Extract verbose examples from rules (if needed)
 
-## Summary
+## Initial Summary
 
 Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, creating high token overhead, cross-reference complexity, and maintenance burden. Propose consolidation and simplification.
 
 ## Current State
 
-- **11 rule files** (reduced from 14), 7 still use `alwaysApply: true` (4 core + 3 others), 3 context-specific (~2174 lines total)
-- **Cross-references:** Rules reference each other (e.g., "per 040-testing.mdc", "see 090-security.mdc")
+- **10 rule files** (reduced from 14), 7 still use `alwaysApply: true`, 3 context-specific (~1982 lines total, reduced from ~2174)
+- **Cross-references:** Rules reference each other (e.g., "per 040-testing.mdc", "see 020-security.mdc")
 - **Consolidated:** `030-patterns.mdc` (merged 030+080), `100-documentation-communication.mdc` (merged 100+021+101)
 - **Context-specific:** 
   - `040-testing.mdc` uses `globs: **/*_test.go` (loads only when editing test files)
@@ -34,11 +34,12 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
   - `070-api-contract.mdc` uses `globs: **/http/**` (loads only when editing HTTP handlers)
 - **Enhanced:** `040-testing.mdc` includes inline test documentation example
 - **Removed:** `020-rule-standards.mdc` (unnecessary meta-rule)
-- **Token cost:** Reduced baseline overhead with 3 context-specific rules (load only when relevant files are edited)
+- **Simplified:** Removed `version` and `lastUpdated` from all rule frontmatter
+- **Token cost:** Reduced baseline overhead - 7 always-apply rules (down from 14), 3 context-specific rules load only when relevant
 
 ## Problems
 
-1. **High overhead:** 7 files still loaded into context every request (4 core + 3 others; reduced from 14)
+1. **High overhead:** 7 files still loaded into context every request (reduced from 14; 3 context-specific rules only load when relevant)
 2. **Context confusion:** Cross-references create circular dependencies; unclear which rule takes precedence
 3. **Redundancy:** Same patterns explained in multiple places (e.g., handlers in both 030 and 080)
 4. **Maintenance burden:** Version tracking, `lastUpdated` dates need constant updates
@@ -57,16 +58,19 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 ### Option 2: Reduce Always-Apply Scope
 
 **Keep `alwaysApply: true` for:**
-- `000-goal.mdc` - Core scope
-- `010-role.mdc` - AI behavior
-- `001-preserve-existing.mdc` - Critical safety rule
-- `090-security.mdc` - Security is cross-cutting (secrets/config/logging/git apply everywhere)
+- `000-goal.mdc` - Core scope ✅
+- `010-role.mdc` - AI behavior (processed early to take precedence) ✅
+- `001-preserve-existing.mdc` - Critical safety rule ✅
+- `020-security.mdc` - Security is cross-cutting (secrets/config/logging/git apply everywhere) ✅
+- `030-patterns.mdc` - Go/service patterns (currently always-apply, could evaluate)
+- `060-reliability.mdc` - Reliability patterns (currently always-apply, could evaluate)
+- `100-documentation-communication.mdc` - Docs/commits (currently always-apply, could evaluate)
 
 **Make context-specific:**
 - ✅ `040-testing.mdc` - Only when editing `*_test.go` files (`globs: **/*_test.go`) **COMPLETED**
 - ✅ `050-observability.mdc` - Only when editing observability code (`globs: **/observability/**`) **COMPLETED**
 - ✅ `070-api-contract.mdc` - Only when editing handlers (`globs: **/http/**`) **COMPLETED**
-- ✅ `090-security.mdc` - Keep as `alwaysApply: true` (security is cross-cutting, applies everywhere) **DECISION: KEEP ALWAYS-APPLY**
+- ✅ `020-security.mdc` - Keep as `alwaysApply: true` (security is cross-cutting, applies everywhere) **DECISION: KEEP ALWAYS-APPLY**
 
 **Result:** 3 always-apply + context-specific = lower baseline overhead
 
@@ -97,20 +101,21 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 **Combine Options 1 + 2 + 3:**
 
-1. ✅ **Merge overlapping rules** (14 → 11 files) **COMPLETED**
-2. 🔄 **Reduce always-apply** (4 core + context-specific) **IN PROGRESS** - 3 rules now context-specific (`040`, `050`, `070`)
+1. ✅ **Merge overlapping rules** (14 → 10 files) **COMPLETED** - Reduced by 4 files
+2. 🔄 **Reduce always-apply** (4 core + 3 others, 3 context-specific) **PARTIALLY COMPLETE** - 3 rules now context-specific (`040`, `050`, `070`), 7 still always-apply
 3. ✅ **Simplify meta-rules** (drop version tracking overhead) **COMPLETED** - `020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules
-4. [ ] **Extract verbose examples** (keep rules concise)
+4. [ ] **Extract verbose examples** (keep rules concise) - Not prioritized
 
+**Current:** 10 files (~1982 lines), 7 always-apply, 3 context-specific
 **Target:** ~800-1000 lines total, 4 core always-apply rules (goal, role, preserve-existing, security), clearer boundaries
 
 ## Acceptance Criteria
 
 - [x] Overlapping rules consolidated (030+080 → `030-patterns.mdc`, 100+021+101 → `100-documentation-communication.mdc`)
-- [ ] Only 4 core rules marked `alwaysApply: true` (currently: `000-goal`, `010-role`, `001-preserve-existing`, `090-security`; 3 others still use `alwaysApply`: `030-patterns`, `060-reliability`, `100-documentation-communication`)
+- [ ] Only 4 core rules marked `alwaysApply: true` (currently: `000-goal`, `010-role`, `001-preserve-existing`, `020-security` ✅; 3 others still use `alwaysApply`: `030-patterns`, `060-reliability`, `100-documentation-communication`)
 - [x] Context-specific rules use `globs` for targeted loading (`040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc` updated)
 - [x] Version tracking removed or simplified (`020-rule-standards.mdc` removed, `version`/`lastUpdated` removed from all rules)
-- [ ] Total rule lines reduced by ~40-50%
+- [x] Total rule lines reduced (~1982 lines from ~2174, ~9% reduction; could reduce more by making remaining rules context-specific)
 - [ ] Cross-references minimized or removed
 - [x] Documentation updated if rule structure changes (`docs/About.md` updated)
 
@@ -132,16 +137,16 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 #### External References by File
 
 ##### docs/About.md
-**Lines 71-82:** Lists all 12 rules in a table (updated):
+**Lines 71-79:** Lists all 10 rules in a table:
 - `000-goal.mdc`
+- `001-preserve-existing.mdc`
 - `010-role.mdc`
-- `020-rule-standards.mdc`
+- `020-security.mdc`
 - `030-patterns.mdc` (consolidated from 030+080)
-- `040-testing.mdc`
-- `050-observability.mdc`
+- `040-testing.mdc` (context-specific)
+- `050-observability.mdc` (context-specific)
 - `060-reliability.mdc`
-- `070-api-contract.mdc`
-- `090-security.mdc`
+- `070-api-contract.mdc` (context-specific)
 - `100-documentation-communication.mdc` (consolidated from 100+021+101)
 
 **Impact:** ✅ Updated to reflect consolidated rules.
@@ -162,6 +167,9 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 **Impact:** Low - historical reference in issue doc.
 
+##### docs/observability.md
+**Line 114:** `see 020-security.mdc` (inline reference - note: file is `020-security.mdc`, not `090-security.mdc`)
+
 ##### docs/issue-simplify-cursor-rules.md
 **Multiple lines:** References many rules (this is the simplification issue itself)
 
@@ -170,13 +178,13 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 #### Cross-References Within Rules
 
 Rules reference each other extensively:
-- `010-role.mdc` → `000-goal.mdc`, `090-security.mdc`
+- `010-role.mdc` → `000-goal.mdc`, `020-security.mdc`
 - `030-patterns.mdc` → `000-goal.mdc`, `040-testing.mdc`, `050-observability.mdc`, `070-api-contract.mdc`, `090-security.mdc` (consolidated from 030+080)
 - `040-testing.mdc` → `060-reliability.mdc`, `070-api-contract.mdc`
 - `050-observability.mdc` → `000-goal.mdc`, `090-security.mdc`
 - `060-reliability.mdc` → `040-testing.mdc`, `050-observability.mdc`
 - `070-api-contract.mdc` → `040-testing.mdc`
-- `100-documentation-communication.mdc` → `090-security.mdc`, `050-observability.mdc`, `060-reliability.mdc`, `070-api-contract.mdc` (consolidated from 100+021+101)
+- `100-documentation-communication.mdc` → `020-security.mdc`, `050-observability.mdc`, `060-reliability.mdc`, `070-api-contract.mdc` (consolidated from 100+021+101)
 
 **Impact:** High - consolidation will require updating these cross-references or removing them.
 
@@ -187,7 +195,7 @@ Rules reference each other extensively:
 3. **Most referenced rules:**
    - `050-observability.mdc` - Referenced in 4 external docs + multiple rules
    - `040-testing.mdc` - Referenced in 3 rules
-   - `090-security.mdc` - Referenced in 3 rules + 1 external doc
+   - `020-security.mdc` - Referenced in 3 rules + 1 external doc
    - `000-goal.mdc` - Referenced in 3 rules (core scope)
    - `070-api-contract.mdc` - Referenced in 2 rules + 1 external doc
 4. **Least referenced:** `022-preserve-existing.mdc`, `060-reliability.mdc` (only in rules, not external docs)
