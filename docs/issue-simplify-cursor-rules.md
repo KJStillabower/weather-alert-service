@@ -27,7 +27,7 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 ### Option 1: Consolidate Overlapping Rules
 
 **Merge:**
-- `030-service-pattern.mdc` + `080-go-patterns.mdc` → single `go-service-patterns.mdc` (remove duplicate handler/DI/error handling)
+- `030-service-pattern.mdc` + `080-go-patterns.mdc` → single `030-patterns.mdc` (remove duplicate handler/DI/error handling)
 - `100-communication.mdc` + `021-change-control.mdc` → single `git-commits.mdc` (commit messages are communication)
 
 **Result:** 14 → 12 files

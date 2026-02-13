@@ -72,12 +72,11 @@ This project uses Cursor rules (`.cursor/rules/*.mdc`) to guide AI-assisted deve
 - `010-role.mdc` - AI assistant collaboration approach
 - `020-rule-standards.mdc` - Rule file standards
 - `021-change-control.mdc` - Git commit standards
-- `030-service-pattern.mdc` - Service architecture patterns
+- `030-patterns.mdc` - Go language patterns and service architecture
 - `040-testing.mdc` - Testing standards and patterns
 - `050-observability.mdc` - Metrics and logging patterns
 - `060-reliability.mdc` - Reliability patterns (retries, timeouts, rate limits)
 - `070-api-contract.mdc` - API endpoint contracts
-- `080-go-patterns.mdc` - Go language conventions
 - `090-security.mdc` - Security best practices
 - `100-communication.mdc` - Communication standards
 - `101-documentation.mdc` - Documentation requirements

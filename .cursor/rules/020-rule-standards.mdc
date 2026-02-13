@@ -60,7 +60,7 @@ Use numbered prefixes for ordering:
 - `000-goal.mdc` - Project scope
 - `010-role.mdc` - AI assistant role
 - `020-rule-standards.mdc` - This meta-rule
-- `030-service-pattern.mdc` - Service architecture patterns
+- `030-patterns.mdc` - Go language patterns and service architecture
 - `040-testing.mdc` - Testing standards
 - `050-observability.mdc` - Observability patterns
 - etc.

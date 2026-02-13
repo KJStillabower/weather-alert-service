@@ -1,0 +1,278 @@
+---
+description: Go language patterns, service architecture, and implementation conventions
+alwaysApply: true
+version: 2.0.0
+lastUpdated: 2026-02-12
+---
+
+# Go and Service Patterns
+
+## Core Principle
+
+Write idiomatic Go that is explicit, testable, and operationally predictable. Use consistent service-layer patterns that prioritize correctness, clarity, maintainability, and operational readiness per `000-goal.mdc`.
+
+## Project Structure
+
+Keep package boundaries simple and purpose-driven.
+
+Suggested layout:
+- `cmd/service/` application entrypoint and wiring
+- `internal/config/` configuration loading and validation
+- `internal/http/` handlers, middleware, transport DTOs
+- `internal/service/` business orchestration
+- `internal/client/` weather provider integration
+- `internal/cache/` cache implementation and interfaces
+- `internal/observability/` metrics/logging helpers
+
+### Rules
+- Prefer `internal/` packages for app internals.
+- Keep `cmd/` thin: wiring only, no business logic.
+- Avoid circular dependencies.
+
+## Core Architecture
+
+Prefer a simple layered design:
+- HTTP handler layer: parse/validate request, map response/status
+- Service layer: business logic, orchestration, decision points
+- Client layer: third-party API integration and request execution
+- Cache layer: read/write weather payloads with TTL
+- Config/infra layer: startup wiring, dependencies, lifecycle
+
+```text
+request -> handler -> service -> (cache -> weather client) -> response
+```
+
+## Interfaces and Dependency Injection
+
+Define interfaces at boundaries where behavior varies (client/cache/clock). Construct dependencies at startup, pass interfaces into services.
+
+```go
+type WeatherClient interface {
+    GetCurrentWeather(ctx context.Context, location string) (WeatherData, error)
+}
+
+type Cache interface {
+    Get(ctx context.Context, key string) (WeatherData, bool, error)
+    Set(ctx context.Context, key string, value WeatherData, ttl time.Duration) error
+}
+
+type WeatherService struct {
+    client WeatherClient
+    cache  Cache
+    ttl    time.Duration
+}
+```
+
+### Rules
+- Do not over-interface trivial concrete logic.
+- Do not instantiate clients/caches inside handlers.
+- Pass dependencies via constructors.
+- Keep constructors explicit; validate required dependencies.
+- Prefer interfaces at boundaries to simplify testing.
+
+## Error Handling
+
+Use wrapped errors for context and sentinel/typed errors for control flow. Use typed/sentinel domain errors and map centrally in handlers.
+
+```go
+if err != nil {
+    return fmt.Errorf("fetch weather: %w", err)
+}
+
+var (
+    ErrInvalidLocation = errors.New("invalid location")
+    ErrUpstreamFailure = errors.New("upstream failure")
+    ErrRateLimited     = errors.New("rate limited")
+)
+```
+
+### Suggested status mapping
+- `ErrInvalidLocation` -> `400`
+- `ErrRateLimited` -> `429`
+- `ErrUpstreamFailure` -> `503`
+- unexpected -> `500`
+
+### Rules
+- Never ignore returned errors without explicit rationale.
+- Wrap errors with operation context (`fmt.Errorf("op: %w", err)`).
+- Use `errors.Is`/`errors.As` for classification.
+- Keep user-facing error messages stable and non-sensitive.
+- Do not leak third-party/internal details to clients.
+- Do not panic in request path.
+- Keep client-facing error body concise and stable.
+
+## Context Propagation
+
+`context.Context` is mandatory for request-scoped operations. Every downstream call must honor request context and timeout budgets.
+
+```go
+ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+defer cancel()
+data, err := s.client.GetCurrentWeather(ctx, location)
+```
+
+### Rules
+- First argument for IO-bound methods should be `ctx context.Context`.
+- Never use `context.Background()` in request handling flow.
+- No `context.Background()` in request path.
+- Honor cancellation and deadlines in clients/cache calls.
+- Do not store context in structs.
+- Timeouts must be configurable.
+- Propagate context through cache/client boundaries.
+
+## Concurrency Patterns
+
+Use goroutines intentionally with bounded lifecycles.
+
+### Rules
+- Guard shared state with mutex or channel ownership.
+- Avoid unbounded goroutine creation.
+- Coordinate goroutines with `errgroup` when request-scoped fan-out is needed.
+- Ensure all spawned workers can terminate on context cancellation.
+
+## HTTP Handler Conventions
+
+Handlers should parse/validate/translate only; service layer owns decisions. Handlers should stay thin.
+
+```go
+func (h *Handler) GetWeather(w http.ResponseWriter, r *http.Request) {
+    location := strings.TrimSpace(mux.Vars(r)["location"])
+    if location == "" {
+        writeError(w, http.StatusBadRequest, "location is required")
+        return
+    }
+
+    result, err := h.weatherService.GetWeather(r.Context(), location)
+    if err != nil {
+        writeServiceError(w, err)
+        return
+    }
+    writeJSON(w, http.StatusOK, result)
+}
+```
+
+### Rules
+- Extract and validate path/query params.
+- Set/propagate request context.
+- Call exactly one service method for primary flow.
+- Translate domain errors to HTTP status codes.
+- Validate path/query input early.
+- Use typed request/response structs.
+- Centralize HTTP error mapping.
+- Set explicit status codes and content type.
+- No business decision trees in handlers.
+- No direct cache/client calls from handlers.
+- No panic paths; always return controlled errors.
+
+## Service Patterns
+
+Services own orchestration and business decisions:
+- Cache-first lookup
+- External API fallback
+- Cache population on successful fetch
+- Domain-level error wrapping
+
+```go
+func (s *WeatherService) GetWeather(ctx context.Context, location string) (WeatherData, error) {
+    key := normalizeLocation(location)
+
+    if cached, ok, err := s.cache.Get(ctx, key); err == nil && ok {
+        return cached, nil
+    }
+
+    data, err := s.client.GetCurrentWeather(ctx, key)
+    if err != nil {
+        return WeatherData{}, fmt.Errorf("fetch weather for %s: %w", key, err)
+    }
+
+    _ = s.cache.Set(ctx, key, data, s.ttl) // non-fatal write path
+    return data, nil
+}
+```
+
+### Rules
+- Prefer explicit decision points over hidden side effects.
+- Write cache on success; cache write failure should not fail request by default.
+- Keep service methods deterministic and testable (per `040-testing.mdc`).
+
+## JSON and Data Modeling
+
+Use explicit transport DTOs and tags. Return a stable response shape for `/weather/{location}`.
+
+```go
+type WeatherResponse struct {
+    Location    string  `json:"location"`
+    Temperature float64 `json:"temperature"`
+    Conditions  string  `json:"conditions"`
+    Humidity    int     `json:"humidity"`
+    WindSpeed   float64 `json:"windSpeed"`
+}
+```
+
+### Rules
+- Keep JSON key casing consistent (`camelCase` per `070-api-contract.mdc`).
+- Keep transport DTOs explicit; avoid leaking provider schema.
+- Avoid leaking upstream provider schemas directly.
+- Normalize units/types before returning.
+- Validate required fields before response serialization.
+- Treat missing required fields as upstream failure.
+
+## Configuration
+
+All runtime behavior should be config-driven via env vars.
+
+### Rules
+- Centralize config parsing/validation in `internal/config`.
+- Fail fast on missing required config.
+- Keep defaults only for non-sensitive, safe values.
+- Document all config keys in `README.md`.
+
+## Logging and Metrics
+
+Follow `050-observability.mdc` and `090-security.mdc`.
+
+### Rules
+- Structured logs only.
+- Log decisions, boundaries, and failures; avoid routine success logs.
+- Never log secrets or credentials.
+- Emit metrics for all critical boundaries.
+
+## Startup and Shutdown
+
+App startup should:
+- Load and validate configuration
+- Construct logger, metrics, cache, client, services, handlers
+- Register routes (`/weather/{location}`, `/health`, `/metrics`)
+
+Shutdown should:
+- Use graceful timeout
+- Stop accepting new requests
+- Flush logs/telemetry where possible
+
+## Naming and Style
+
+Follow standard Go style and naming.
+
+### Rules
+- Run `gofmt` on all Go files.
+- Keep functions focused and small where practical.
+- Use clear names over abbreviations.
+- Keep exported surface minimal.
+- Add comments for exported types/functions.
+
+## Testing
+
+Follow `040-testing.mdc` for service and handler testing patterns and requirements.
+
+## Avoid
+
+- Fat handlers with embedded business logic
+- Business logic in `main` or handlers
+- Global mutable state for clients/cache
+- Hidden globals for dependencies
+- Hidden retries in multiple layers (retry amplification)
+- Returning raw upstream payload/errors directly
+- Tight coupling to one weather provider schema
+- Mixed concerns in one package
+- Silent error swallowing
+- Long-lived background goroutines without shutdown control
