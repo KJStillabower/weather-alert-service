@@ -263,6 +263,29 @@ go test -tags=integration ./internal/degraded
 
 See `docs/integration-testing.md` for detailed integration testing guide and comparison of both approaches.
 
+### Performance Benchmarks
+
+Performance benchmarks establish baseline metrics for critical code paths and enable regression detection.
+
+**Run all benchmarks:**
+```bash
+go test -bench=. -benchmem ./...
+```
+
+**Run benchmarks for specific packages:**
+```bash
+go test -bench=. -benchmem ./internal/cache
+go test -bench=. -benchmem ./internal/client
+go test -bench=. -benchmem ./internal/http
+```
+
+**Benchmark options:**
+- `-benchmem` - Report memory allocations
+- `-benchtime=5s` - Run each benchmark for 5 seconds
+- `-cpu=1,2,4` - Run with different CPU counts
+
+See `docs/performance-benchmarks.md` for comprehensive benchmark documentation, interpretation guide, and optimization recommendations.
+
 ### Manual Testing
 
 #### Get Weather Data
