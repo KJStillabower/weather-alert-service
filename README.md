@@ -213,6 +213,56 @@ The PID is stored in `/tmp/weather-service.pid`, so you can stop the service lat
 - **Error handling** - clear error messages
 - **PID tracking** - prevents multiple instances, enables stop via `stop`/`cleanup`
 
+### Integration Tests
+
+The project includes two types of integration testing:
+
+#### 1. Service Integration Tests (`test-service.sh`)
+
+Tests the full running service binary with real HTTP requests. This is the primary integration testing approach for manual testing and validation.
+
+**Run service integration tests:**
+```bash
+export WEATHER_API_KEY=your_api_key
+./test-service.sh all
+```
+
+**What it tests:**
+- Full service startup and operation
+- All HTTP endpoints (`/health`, `/weather/{location}`, `/metrics`)
+- Cache functionality (hits/misses)
+- Synthetic lifecycle scenarios (degraded state, recovery)
+
+See the [Testing](#testing) section above for detailed `test-service.sh` usage.
+
+#### 2. Go Integration Tests (`-tags=integration`)
+
+Tests individual components with real dependencies (API, Memcached). Useful for automated testing and component-level validation.
+
+**Prerequisites:**
+- `WEATHER_API_KEY` environment variable set (valid OpenWeatherMap API key)
+- Optional: Memcached running (for cache integration tests)
+
+**Run Go integration tests:**
+```bash
+export WEATHER_API_KEY=your_api_key
+go test -tags=integration ./...
+```
+
+**Run specific integration tests:**
+```bash
+go test -tags=integration ./internal/http
+go test -tags=integration ./internal/degraded
+```
+
+**What it tests:**
+- Component integration (handlers → service → cache → API)
+- Degraded state recovery with real API failures
+- Rate limiting under concurrent load
+- Error propagation through layers
+
+See `docs/integration-testing.md` for detailed integration testing guide and comparison of both approaches.
+
 ### Manual Testing
 
 #### Get Weather Data
