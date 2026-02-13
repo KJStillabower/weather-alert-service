@@ -9,11 +9,12 @@
 - Consolidated `100-communication.mdc` + `021-change-control.mdc` + `101-documentation.mdc` → `100-documentation-communication.mdc`
 - Removed `020-rule-standards.mdc` (unnecessary meta-rule)
 - Updated `040-testing.mdc` to use `globs: **/*_test.go` instead of `alwaysApply: true`
+- Enhanced `040-testing.mdc` with inline test documentation example
 - Updated `docs/About.md` to reflect new rule structure
 
 **Remaining:**
-- Reduce `alwaysApply: true` scope (currently all 12 files)
-- Simplify version tracking meta-rules
+- Reduce `alwaysApply: true` scope for other rules (currently 10 files still use `alwaysApply`)
+- Extract verbose examples from rules (if needed)
 
 ## Summary
 
@@ -21,16 +22,17 @@ Current rule set has 14 files (~2174 lines) all marked `alwaysApply: true`, crea
 
 ## Current State
 
-- **11 rule files** (reduced from 14), most `alwaysApply: true` (~2174 lines total)
+- **11 rule files** (reduced from 14), 10 still use `alwaysApply: true` (~2174 lines total)
 - **Cross-references:** Rules reference each other (e.g., "per 040-testing.mdc", "see 090-security.mdc")
 - **Consolidated:** `030-patterns.mdc` (merged 030+080), `100-documentation-communication.mdc` (merged 100+021+101)
-- **Context-specific:** `040-testing.mdc` now uses `globs: **/*_test.go` instead of `alwaysApply: true`
+- **Context-specific:** `040-testing.mdc` now uses `globs: **/*_test.go` instead of `alwaysApply: true` (loads only when editing test files)
+- **Enhanced:** `040-testing.mdc` includes inline test documentation example
 - **Removed:** `020-rule-standards.mdc` (unnecessary meta-rule)
-- **Token cost:** Reduced baseline overhead with context-specific rules
+- **Token cost:** Reduced baseline overhead with context-specific rules (1 rule now context-specific)
 
 ## Problems
 
-1. **High overhead:** All 14 files loaded into context every request
+1. **High overhead:** 10 files still loaded into context every request (reduced from 14)
 2. **Context confusion:** Cross-references create circular dependencies; unclear which rule takes precedence
 3. **Redundancy:** Same patterns explained in multiple places (e.g., handlers in both 030 and 080)
 4. **Maintenance burden:** Version tracking, `lastUpdated` dates need constant updates
