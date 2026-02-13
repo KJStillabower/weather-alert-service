@@ -34,7 +34,9 @@ type Config struct {
 	RateLimitRPS   int
 	RateLimitBurst int
 
-	ShutdownTimeout time.Duration
+	ShutdownTimeout            time.Duration
+	ShutdownInFlightTimeout    time.Duration
+	ShutdownInFlightCheckInterval time.Duration
 
 	ReadyDelay            time.Duration
 	OverloadWindow        time.Duration
@@ -48,6 +50,11 @@ type Config struct {
 	DegradedRetryMax      time.Duration
 
 	TrackedLocations []string
+
+	CircuitBreakerEnabled     bool
+	CircuitBreakerFailureThreshold int
+	CircuitBreakerSuccessThreshold int
+	CircuitBreakerTimeout    time.Duration
 }
 
 type fileConfig struct {
@@ -85,7 +92,9 @@ type fileConfig struct {
 	} `yaml:"reliability"`
 
 	Shutdown struct {
-		Timeout string `yaml:"timeout"`
+		Timeout            string `yaml:"timeout"`
+		InFlightTimeout    string `yaml:"in_flight_timeout"`
+		InFlightCheckInterval string `yaml:"in_flight_check_interval"`
 	} `yaml:"shutdown"`
 
 	Lifecycle struct {
@@ -104,6 +113,13 @@ type fileConfig struct {
 	Metrics struct {
 		TrackedLocations []string `yaml:"tracked_locations"`
 	} `yaml:"metrics"`
+
+	CircuitBreaker struct {
+		Enabled          bool   `yaml:"enabled"`
+		FailureThreshold int    `yaml:"failure_threshold"`
+		SuccessThreshold int    `yaml:"success_threshold"`
+		Timeout          string `yaml:"timeout"`
+	} `yaml:"circuit_breaker"`
 }
 
 type secretsFile struct {
@@ -221,6 +237,11 @@ func Load() (*Config, error) {
 	}
 
 	cfg.ShutdownTimeout = parseDuration(fc.Shutdown.Timeout, 30*time.Second)
+	cfg.ShutdownInFlightTimeout = parseDuration(fc.Shutdown.InFlightTimeout, 5*time.Second)
+	cfg.ShutdownInFlightCheckInterval = parseDuration(fc.Shutdown.InFlightCheckInterval, 100*time.Millisecond)
+	if cfg.ShutdownInFlightCheckInterval <= 0 {
+		cfg.ShutdownInFlightCheckInterval = 100 * time.Millisecond
+	}
 
 	cfg.ReadyDelay = parseDuration(fc.Lifecycle.ReadyDelay, 3*time.Second)
 	cfg.OverloadWindow = parseDuration(fc.Lifecycle.OverloadWindow, 60*time.Second)
@@ -242,6 +263,20 @@ func Load() (*Config, error) {
 	cfg.DegradedRetryInitial = parseDuration(fc.Lifecycle.DegradedRetryInitial, 1*time.Minute)
 	cfg.DegradedRetryMax = parseDuration(fc.Lifecycle.DegradedRetryMax, 20*time.Minute)
 	cfg.TrackedLocations = fc.Metrics.TrackedLocations
+
+	cfg.CircuitBreakerEnabled = fc.CircuitBreaker.Enabled
+	cfg.CircuitBreakerFailureThreshold = fc.CircuitBreaker.FailureThreshold
+	if cfg.CircuitBreakerFailureThreshold <= 0 {
+		cfg.CircuitBreakerFailureThreshold = 5
+	}
+	cfg.CircuitBreakerSuccessThreshold = fc.CircuitBreaker.SuccessThreshold
+	if cfg.CircuitBreakerSuccessThreshold <= 0 {
+		cfg.CircuitBreakerSuccessThreshold = 2
+	}
+	cfg.CircuitBreakerTimeout = parseDuration(fc.CircuitBreaker.Timeout, 30*time.Second)
+	if cfg.CircuitBreakerTimeout <= 0 {
+		cfg.CircuitBreakerTimeout = 30 * time.Second
+	}
 
 	if err := validate(cfg); err != nil {
 		return nil, err

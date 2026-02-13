@@ -62,6 +62,22 @@ var (
 	// HTTP errors by route and category. Watch for: error mix, debugging.
 	HTTPErrorsTotal *prometheus.CounterVec
 
+	// ShutdownInFlightRequests is set during shutdown to the in-flight count when drain started.
+	ShutdownInFlightRequests prometheus.Gauge
+
+	// CacheErrorsTotal counts cache errors by operation and type (get/set, timeout/connection/unknown).
+	CacheErrorsTotal *prometheus.CounterVec
+	// CacheOperationDurationSeconds tracks cache get/set duration by status (success/error).
+	CacheOperationDurationSeconds *prometheus.HistogramVec
+
+	// RequestTimeoutPropagatedTotal counts whether request timeout was propagated to upstream (yes/no).
+	RequestTimeoutPropagatedTotal *prometheus.CounterVec
+
+	// CircuitBreakerState is the current state (0=closed, 1=open, 2=half-open) per component.
+	CircuitBreakerState *prometheus.GaugeVec
+	// CircuitBreakerTransitionsTotal counts state transitions per component, from, to.
+	CircuitBreakerTransitionsTotal *prometheus.CounterVec
+
 	// trackedLocations is built from config; used to resolve location for metrics.
 	trackedLocationsMu sync.RWMutex
 	trackedLocations   map[string]struct{}
@@ -190,6 +206,48 @@ func init() {
 		},
 		[]string{"method", "route", "category"},
 	)
+	ShutdownInFlightRequests = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "shutdownInFlightRequests",
+			Help: "Number of in-flight requests when shutdown drain started",
+		},
+	)
+	CacheErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cacheErrorsTotal",
+			Help: "Total number of cache errors by operation and type",
+		},
+		[]string{"operation", "type"},
+	)
+	CacheOperationDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cacheOperationDurationSeconds",
+			Help:    "Cache operation duration in seconds",
+			Buckets: []float64{.001, .005, .01, .05, .1, .5, 1},
+		},
+		[]string{"operation", "status"},
+	)
+	RequestTimeoutPropagatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "requestTimeoutPropagatedTotal",
+			Help: "Total requests where timeout was propagated to upstream (propagated=yes/no)",
+		},
+		[]string{"propagated"},
+	)
+	CircuitBreakerState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "circuitBreakerState",
+			Help: "Circuit breaker state (0=closed, 1=open, 2=half-open)",
+		},
+		[]string{"component"},
+	)
+	CircuitBreakerTransitionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "circuitBreakerTransitionsTotal",
+			Help: "Total circuit breaker state transitions",
+		},
+		[]string{"component", "from", "to"},
+	)
 
 	registry.MustRegister(
 		HTTPRequestsTotal, HTTPRequestDuration, HTTPRequestsInFlight,
@@ -200,7 +258,29 @@ func init() {
 		HTTPRequestSizeBytes, HTTPResponseSizeBytes,
 		CacheStampedeDetectedTotal, CacheStampedeConcurrency,
 		WeatherAPIErrorsTotal, HTTPErrorsTotal,
+		ShutdownInFlightRequests,
+		CacheErrorsTotal, CacheOperationDurationSeconds,
+		RequestTimeoutPropagatedTotal,
+		CircuitBreakerState, CircuitBreakerTransitionsTotal,
 	)
+}
+
+// CircuitBreakerStateValue returns the gauge value for a state (0=closed, 1=open, 2=half-open).
+func CircuitBreakerStateValue(s int) float64 { return float64(s) }
+
+// RecordCircuitBreakerTransition records a state transition for the given component.
+func RecordCircuitBreakerTransition(component, from, to string) {
+	CircuitBreakerTransitionsTotal.WithLabelValues(component, from, to).Inc()
+}
+
+// SetCircuitBreakerStateGauge sets the circuit breaker state gauge for the component.
+func SetCircuitBreakerStateGauge(component string, state float64) {
+	CircuitBreakerState.WithLabelValues(component).Set(state)
+}
+
+// RecordShutdownInFlight sets the shutdown in-flight gauge for observability during drain.
+func RecordShutdownInFlight(count int64) {
+	ShutdownInFlightRequests.Set(float64(count))
 }
 
 // RegisterRateLimitGauges registers load and rejects gauges for the rate-limited path.

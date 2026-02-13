@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/kjstillabower/weather-alert-service/internal/cache"
+	"github.com/kjstillabower/weather-alert-service/internal/circuitbreaker"
 	"github.com/kjstillabower/weather-alert-service/internal/client"
 	"github.com/kjstillabower/weather-alert-service/internal/config"
 	httphandler "github.com/kjstillabower/weather-alert-service/internal/http"
@@ -45,6 +46,22 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("weather client", zap.Error(err))
+	}
+
+	if cfg.CircuitBreakerEnabled {
+		cb := circuitbreaker.New(circuitbreaker.Config{
+			FailureThreshold:  cfg.CircuitBreakerFailureThreshold,
+			SuccessThreshold:  cfg.CircuitBreakerSuccessThreshold,
+			Timeout:           cfg.CircuitBreakerTimeout,
+			Component:         "weather_api",
+			OnStateChange: func(from, to circuitbreaker.State) {
+				observability.RecordCircuitBreakerTransition("weather_api", from.String(), to.String())
+				observability.SetCircuitBreakerStateGauge("weather_api", observability.CircuitBreakerStateValue(int(to)))
+			},
+		})
+		weatherClient.SetCircuitBreaker(cb)
+		observability.SetCircuitBreakerStateGauge("weather_api", 0)
+		logger.Info("circuit breaker enabled", zap.Int("failure_threshold", cfg.CircuitBreakerFailureThreshold), zap.Duration("timeout", cfg.CircuitBreakerTimeout))
 	}
 
 	var cacheSvc cache.Cache
@@ -133,11 +150,26 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown", zap.Error(err))
+		logger.Error("server shutdown", zap.Error(err))
 	}
+
+	inFlight := httphandler.InFlightCount()
+	logger.Info("waiting for in-flight requests", zap.Int64("count", inFlight))
+	observability.RecordShutdownInFlight(inFlight)
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), cfg.ShutdownInFlightTimeout)
+	defer waitCancel()
+	if err := httphandler.WaitForInFlight(waitCtx, cfg.ShutdownInFlightCheckInterval); err != nil {
+		logger.Warn("in-flight requests not completed", zap.Error(err), zap.Int64("remaining", httphandler.InFlightCount()))
+	}
+
+	if err := observability.FlushTelemetry(context.Background(), logger); err != nil {
+		logger.Error("telemetry flush", zap.Error(err))
+	}
+
 	if memcacheCloser != nil {
 		if err := memcacheCloser.Close(); err != nil {
 			logger.Error("memcached close", zap.Error(err))
 		}
 	}
+	logger.Info("shutdown complete")
 }

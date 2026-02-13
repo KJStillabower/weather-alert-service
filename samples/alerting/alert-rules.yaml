@@ -4,7 +4,8 @@
 # Metric sources:
 # - Application: httpRequestsTotal, httpRequestDurationSeconds, httpRequestsInFlight,
 #   weatherApiCallsTotal, weatherApiDurationSeconds, weatherApiRetriesTotal,
-#   cacheHitsTotal, weatherQueriesTotal, weatherQueriesByLocationTotal,
+#   cacheHitsTotal, cacheErrorsTotal, cacheOperationDurationSeconds,
+#   weatherQueriesTotal, weatherQueriesByLocationTotal,
 #   rateLimitRequestsInWindow, rateLimitRejectsInWindow, rateLimitDeniedTotal
 # - Runtime: process_* and go_* (Prometheus process/go collectors)
 
@@ -174,6 +175,34 @@ groups:
           summary: "Low cache hit rate (< 50%)"
           description: "Cache hit rate is {{ $value | humanizePercentage }}; cache effectiveness degraded. May indicate TTL too short, cache eviction, or cache backend issues."
           runbook_url: "https://example.com/runbooks/low-cache-hit-rate"
+
+  - name: weather-service-cache-errors
+    rules:
+      # High cache error rate: > 10% of cache operations failing
+      - alert: HighCacheErrorRate
+        expr: |
+          sum(rate(cacheErrorsTotal[5m]))
+          /
+          sum(rate(cacheOperationDurationSeconds_count[5m]))
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cache error rate"
+          description: "More than 10% of cache operations are failing over the last 5 minutes."
+          runbook_url: "https://example.com/runbooks/cache-errors"
+
+      # Cache backend connection failures
+      - alert: CacheBackendDown
+        expr: rate(cacheErrorsTotal{type="connection"}[5m]) > 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cache backend connection failures"
+          description: "Cache backend appears to be down or unreachable."
+          runbook_url: "https://example.com/runbooks/cache-backend-down"
 
   - name: weather-service-runtime
     rules:

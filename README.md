@@ -411,6 +411,12 @@ Prometheus metrics endpoint for scraping. Returns application metrics plus proce
 | `cacheStampedeConcurrency` | Histogram | `location` | Concurrent miss count when stampede detected. |
 | `weatherApiErrorsTotal` | Counter | `category` | API errors by category (timeout, rate_limited, upstream_5xx, etc.). |
 | `httpErrorsTotal` | Counter | `method`, `route`, `category` | HTTP errors by category. |
+| `shutdownInFlightRequests` | Gauge | — | In-flight request count recorded at shutdown (before wait). |
+| `circuitBreakerState` | Gauge | `component` | Circuit breaker state (0=closed, 1=open, 2=half-open). |
+| `circuitBreakerTransitionsTotal` | Counter | `component`, `from`, `to` | State transitions. |
+| `requestTimeoutPropagatedTotal` | Counter | `propagated` | Requests where upstream timeout was derived from request context (`yes`/`no`). |
+| `cacheErrorsTotal` | Counter | `operation`, `type` | Cache errors by operation (get/set) and type (timeout, connection, unknown). |
+| `cacheOperationDurationSeconds` | Histogram | `operation`, `status` | Cache Get/Set duration; status success/error. |
 
 **Runtime metrics** (process_cpu_seconds_total, process_resident_memory_bytes, go_goroutines, etc.): standard Prometheus process and Go collectors. CPU utilization: `rate(process_cpu_seconds_total[1m])`.
 
@@ -423,7 +429,11 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-**Alerting samples:** `samples/alerting/` contains example `prometheus.yaml`, `alert-rules.yaml`, `recording-rules-slo.yaml` (SLO calculations), and `alertmanager.yaml` with PagerDuty and FireHydrant integration. See [docs/observability.md](docs/observability.md) for SLO tracking and recording rules.
+**Alerting samples:** `samples/alerting/` contains example `prometheus.yaml`, `alert-rules.yaml`, `recording-rules-slo.yaml` (SLO calculations), and `alertmanager.yaml` with PagerDuty and FireHydrant integration. Cache error alerts (e.g. `HighCacheErrorRate`, `CacheBackendDown`) are in the same alert rules file. See [docs/observability.md](docs/observability.md) for SLO tracking and recording rules.
+
+**Circuit breaker (optional):** When enabled via config (`circuit_breaker.enabled` or `CIRCUIT_BREAKER_ENABLED`), upstream weather API calls go through a circuit breaker. After a configurable number of failures the circuit opens and requests fail fast; after a timeout the circuit goes half-open and a success threshold closes it. Metrics: `circuitBreakerState`, `circuitBreakerTransitionsTotal`.
+
+**Request timeout propagation:** When a request has a deadline (e.g. from an upstream gateway), the weather client uses up to 90% of the remaining time for the upstream API call (capped by the configured client timeout, minimum 100ms). This keeps upstream calls within the request timeout budget. `requestTimeoutPropagatedTotal{propagated="yes"|"no"}` tracks whether the timeout was derived from context.
 
 ### Logging
 
@@ -456,6 +466,12 @@ The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in
 | `ENV_NAME` | Which config file to load (`config/{ENV_NAME}.yaml`) | `dev` |
 | `WEATHER_API_KEY` | OpenWeatherMap API key (or set in `config/secrets.yaml`) | Required |
 | `LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`). Env var only; not in `config/*.yaml`. | `INFO` |
+| `SHUTDOWN_INFLIGHT_TIMEOUT` | Max time to wait for in-flight requests during shutdown | `5s` |
+| `SHUTDOWN_INFLIGHT_CHECK_INTERVAL` | Interval between in-flight count checks during shutdown | `100ms` |
+| `CIRCUIT_BREAKER_ENABLED` | Enable circuit breaker for upstream API calls | `false` |
+| `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Failures before opening circuit | `5` |
+| `CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | Successes in half-open before closing | `2` |
+| `CIRCUIT_BREAKER_TIMEOUT` | Time before half-open after open | `30s` |
 
 ### Production Considerations
 
@@ -476,8 +492,11 @@ The service loads `config/{ENV_NAME}.yaml`. Set `ENV_NAME=dev_localcache` for in
 
 4. **Graceful Shutdown**
    - Service handles SIGTERM/SIGINT signals
-   - Configurable shutdown timeout
-   - In-flight requests complete before shutdown
+   - Configurable shutdown timeout; server stops accepting new requests first
+   - In-flight request tracker: middleware counts active requests; shutdown waits for in-flight to reach zero (configurable timeout and check interval) before proceeding
+   - Telemetry flush: logger synced after in-flight wait so logs are not lost
+   - Memcached (if configured) closed after telemetry flush
+   - Config: `shutdown.in_flight_timeout`, `shutdown.in_flight_check_interval` (or env `SHUTDOWN_INFLIGHT_TIMEOUT`, `SHUTDOWN_INFLIGHT_CHECK_INTERVAL`)
 
 ## Lifecycle
 

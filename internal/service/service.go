@@ -53,7 +53,14 @@ func (s *WeatherService) GetWeather(ctx context.Context, location string) (model
 	start := time.Now()
 	logger := loggerFromContext(ctx)
 
-	if cached, ok, err := s.cache.Get(ctx, key); err == nil && ok {
+	getStart := time.Now()
+	cached, ok, err := s.cache.Get(ctx, key)
+	getDuration := time.Since(getStart).Seconds()
+	if err != nil {
+		observability.CacheErrorsTotal.WithLabelValues("get", categorizeCacheError(err)).Inc()
+		observability.CacheOperationDurationSeconds.WithLabelValues("get", "error").Observe(getDuration)
+	} else if ok {
+		observability.CacheOperationDurationSeconds.WithLabelValues("get", "success").Observe(getDuration)
 		observability.CacheHitsTotal.WithLabelValues("weather").Inc()
 		if logger != nil {
 			logger.Debug("cache hit", zap.String("location", key))
@@ -78,11 +85,35 @@ func (s *WeatherService) GetWeather(ctx context.Context, location string) (model
 		return models.WeatherData{}, fmt.Errorf("fetch weather for %s: %w", key, err)
 	}
 
-	_ = s.cache.Set(ctx, key, data, s.ttl)
+	setStart := time.Now()
+	if setErr := s.cache.Set(ctx, key, data, s.ttl); setErr != nil {
+		observability.CacheErrorsTotal.WithLabelValues("set", categorizeCacheError(setErr)).Inc()
+		observability.CacheOperationDurationSeconds.WithLabelValues("set", "error").Observe(time.Since(setStart).Seconds())
+		if logger != nil {
+			logger.Warn("cache set failed", zap.String("location", key), zap.Error(setErr))
+		}
+	} else {
+		observability.CacheOperationDurationSeconds.WithLabelValues("set", "success").Observe(time.Since(setStart).Seconds())
+	}
 	if logger != nil {
 		logger.Debug("weather served", zap.String("location", key), zap.Bool("cached", false), zap.Duration("duration", time.Since(start)))
 	}
 	return data, nil
+}
+
+// categorizeCacheError returns a stable label for cache error metrics (timeout, connection, unknown).
+func categorizeCacheError(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "timeout") {
+		return "timeout"
+	}
+	if strings.Contains(errStr, "connection") || strings.Contains(errStr, "network") {
+		return "connection"
+	}
+	return "unknown"
 }
 
 // normalizeLocation normalizes location strings by trimming whitespace and converting to lowercase.

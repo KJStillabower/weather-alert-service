@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjstillabower/weather-alert-service/internal/circuitbreaker"
 	"github.com/kjstillabower/weather-alert-service/internal/models"
 	"github.com/kjstillabower/weather-alert-service/internal/observability"
 )
@@ -37,14 +38,16 @@ var (
 
 // OpenWeatherClient implements WeatherClient for OpenWeatherMap API.
 // Provides retry logic with exponential backoff for transient failures.
+// Optional circuitBreaker wraps upstream calls when set.
 type OpenWeatherClient struct {
-	apiKey        string
-	apiURL        string
-	timeout       time.Duration
-	client        *http.Client
-	retryAttempts int
+	apiKey         string
+	apiURL         string
+	timeout        time.Duration
+	client         *http.Client
+	retryAttempts  int
 	retryBaseDelay time.Duration
 	retryMaxDelay  time.Duration
+	circuitBreaker *circuitbreaker.CircuitBreaker
 }
 
 // NewOpenWeatherClient creates a new OpenWeatherClient with default retry settings
@@ -95,9 +98,29 @@ type openWeatherResponse struct {
 // GetCurrentWeather retrieves weather data for the specified location with retry logic.
 // Retries on transient failures (timeouts, rate limits, 5xx errors) using exponential backoff.
 // Returns immediately on non-retryable errors (4xx except 429). Respects context cancellation.
+// Propagates request context deadline to upstream calls so upstream timeout does not exceed remaining request budget.
 func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location string) (models.WeatherData, error) {
+	upstreamTimeout := c.upstreamTimeoutFromContext(ctx)
+	observability.RequestTimeoutPropagatedTotal.WithLabelValues(propagatedLabel(upstreamTimeout != c.timeout)).Inc()
+
+	if c.circuitBreaker != nil {
+		var result models.WeatherData
+		var err error
+		cbErr := c.circuitBreaker.Call(ctx, func() error {
+			result, err = c.getCurrentWeatherWithRetry(ctx, location, upstreamTimeout)
+			return err
+		})
+		if cbErr != nil {
+			return models.WeatherData{}, fmt.Errorf("circuit breaker: %w", cbErr)
+		}
+		return result, err
+	}
+	return c.getCurrentWeatherWithRetry(ctx, location, upstreamTimeout)
+}
+
+// getCurrentWeatherWithRetry runs the retry loop for fetching weather. Used by GetCurrentWeather with or without circuit breaker.
+func (c *OpenWeatherClient) getCurrentWeatherWithRetry(ctx context.Context, location string, upstreamTimeout time.Duration) (models.WeatherData, error) {
 	var lastErr error
-	
 	for attempt := 0; attempt < c.retryAttempts; attempt++ {
 		if attempt > 0 {
 			observability.WeatherAPIRetriesTotal.Inc()
@@ -109,7 +132,7 @@ func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location stri
 			}
 		}
 
-		result, err := c.callAPI(ctx, location)
+		result, err := c.callAPI(ctx, location, upstreamTimeout)
 		if err == nil {
 			return result, nil
 		}
@@ -119,17 +142,47 @@ func (c *OpenWeatherClient) GetCurrentWeather(ctx context.Context, location stri
 			return models.WeatherData{}, err
 		}
 	}
-
 	return models.WeatherData{}, fmt.Errorf("exhausted retries: %w", lastErr)
+}
+
+// SetCircuitBreaker attaches an optional circuit breaker to the client.
+// When set, GetCurrentWeather runs the upstream call inside the breaker.
+func (c *OpenWeatherClient) SetCircuitBreaker(cb *circuitbreaker.CircuitBreaker) {
+	c.circuitBreaker = cb
+}
+
+// upstreamTimeoutFromContext returns the timeout to use for upstream API calls.
+// If ctx has a deadline, uses 90% of remaining time, capped at c.timeout and min 100ms.
+func (c *OpenWeatherClient) upstreamTimeoutFromContext(ctx context.Context) time.Duration {
+	deadline, hasDeadline := ctx.Deadline()
+	if !hasDeadline {
+		return c.timeout
+	}
+	remaining := time.Until(deadline)
+	upstreamTimeout := time.Duration(float64(remaining) * 0.9)
+	if upstreamTimeout > c.timeout {
+		upstreamTimeout = c.timeout
+	}
+	if upstreamTimeout < 100*time.Millisecond {
+		upstreamTimeout = 100 * time.Millisecond
+	}
+	return upstreamTimeout
+}
+
+func propagatedLabel(propagated bool) string {
+	if propagated {
+		return "yes"
+	}
+	return "no"
 }
 
 // callAPI executes a single API request to fetch weather data for the location.
 // Propagates correlation ID from context, records metrics, and handles HTTP errors.
-// Returns parsed weather data on success, or error on failure.
-func (c *OpenWeatherClient) callAPI(ctx context.Context, location string) (models.WeatherData, error) {
+// timeout is the maximum duration for this single request (may be derived from request context).
+func (c *OpenWeatherClient) callAPI(ctx context.Context, location string, timeout time.Duration) (models.WeatherData, error) {
 	start := time.Now()
-	
-	reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
+
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := c.buildRequest(reqCtx, location)

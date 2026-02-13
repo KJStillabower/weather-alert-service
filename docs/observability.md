@@ -45,6 +45,8 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | `cacheHitsTotal` | Counter | cacheType | Cache hits; hit rate = hits / weatherQueriesTotal | Low hit rate; diminishing freshness vs cost trade-off |
 | `cacheStampedeDetectedTotal` | Counter | location | Times concurrent cache misses for same key exceeded 1 (stampede) | Thundering herd; consider request coalescing |
 | `cacheStampedeConcurrency` | Histogram | location | Concurrent miss count when stampede detected | Severity of stampede; per-key load |
+| `cacheErrorsTotal` | Counter | operation, type | Cache errors by operation (get, set) and type (timeout, connection, unknown) | High rate = cache backend issues; alert on connection type |
+| `cacheOperationDurationSeconds` | Histogram | operation, status | Get/Set duration; status success or error | Slow or failing cache ops; p95 by status |
 
 #### Business
 
@@ -72,6 +74,21 @@ We avoid overlap and noise. Metrics cover routine success paths (request counts,
 | Metric | Type | Labels | Purpose | Watch for |
 |--------|------|--------|---------|-----------|
 | process_*, go_* | — | — | CPU, memory, goroutines, threads (Prometheus collectors) | High sustained CPU; memory growth (leak); goroutine spike (leak) |
+
+#### Graceful shutdown and reliability
+
+| Metric | Type | Labels | Purpose | Watch for |
+|--------|------|--------|---------|-----------|
+| `shutdownInFlightRequests` | Gauge | — | In-flight request count recorded once at shutdown (before waiting) | Non-zero after shutdown = requests were still in flight; tune shutdown timeout if needed |
+| `circuitBreakerState` | Gauge | component | Circuit breaker state: 0=closed, 1=open, 2=half-open | 1 = failing fast; 2 = probing; sustained open = upstream unhealthy |
+| `circuitBreakerTransitionsTotal` | Counter | component, from, to | State transitions (e.g. closed→open, open→half_open) | Flapping; recovery frequency |
+| `requestTimeoutPropagatedTotal` | Counter | propagated | Count where upstream timeout was derived from request context (yes) or not (no) | Ratio yes/no shows how often request deadlines are propagated to upstream |
+
+**Circuit breaker:** When enabled, the weather API client wraps calls in a circuit breaker. After a configurable failure threshold the circuit opens and requests fail immediately; after a timeout it goes half-open and a success threshold closes it. Use `circuitBreakerState` and `circuitBreakerTransitionsTotal` to see open/half-open events and recovery.
+
+**Request timeout propagation:** If the incoming request has a deadline, the client uses up to 90% of the remaining time for the upstream call (capped by configured client timeout, minimum 100ms). This keeps upstream calls within the request timeout budget. `requestTimeoutPropagatedTotal{propagated="yes"}` increments when the timeout was taken from context.
+
+**Cache error alerting:** Sample alerts in `samples/alerting/alert-rules.yaml` include `HighCacheErrorRate` (e.g. >10% cache error rate over 5m) and `CacheBackendDown` (connection-type cache errors). Use `cacheErrorsTotal` and `cacheOperationDurationSeconds` to investigate cache backend health.
 
 **Route labels:** Use path templates (e.g. `/weather/{location}`) to avoid cardinality explosions.
 
